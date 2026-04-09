@@ -365,36 +365,20 @@ namespace MajdataPlay.Scenes.Login
                             if (!rsp.IsSuccessfully)
                             {
                                 MajDebug.LogError($"Login failed:\nStatusCode:{rsp.StatusCode}\nErrorCode:{rsp.ErrorCode}\nMessage:{rsp.Message}");
-                                var errMsg = string.Empty;
-                                switch(rsp.ErrorCode)
+                                var errMsg = rsp.ErrorCode switch
                                 {
-                                    case HttpErrorCode.Timeout:
-                                        errMsg = "MAJTEXT_LOGIN_CONNECT_TIMEOUT";
-                                        break;
-                                    case HttpErrorCode.InvalidRequest:
-                                        errMsg = rsp.Message;
-                                        break;
-                                    case HttpErrorCode.Unreachable:
-                                        errMsg = "MAJTEXT_LOGIN_CONNECT_UNREACHABLE";
-                                        break;
-                                    case HttpErrorCode.Unsuccessful:
-                                        if (rsp.StatusCode is HttpStatusCode.Unauthorized)
-                                        {
-                                            errMsg = "MAJTEXT_ONLINE_USERNAME_OR_PASSWORD_INCORRECT";
-                                        }
-                                        else if (rsp.StatusCode is HttpStatusCode.MethodNotAllowed)
-                                        {
-                                            errMsg = "MAJTEXT_ONLINE_METHOD_NOT_ALLOWED";
-                                        }
-                                        else
-                                        {
-                                            errMsg = "MAJTEXT_LOGIN_UNKNOWN_ERROR";
-                                        }
-                                        break;
-                                    default:
-                                        errMsg = "MAJTEXT_LOGIN_UNKNOWN_ERROR";
-                                        break;
-                                }
+                                    HttpErrorCode.Timeout => "MAJTEXT_LOGIN_CONNECT_TIMEOUT",
+                                    HttpErrorCode.InvalidRequest => rsp.Message,
+                                    HttpErrorCode.Unreachable => "MAJTEXT_LOGIN_CONNECT_UNREACHABLE",
+                                    HttpErrorCode.Unsuccessful => rsp.StatusCode switch
+                                    {
+                                        HttpStatusCode.Unauthorized => "MAJTEXT_ONLINE_USERNAME_OR_PASSWORD_INCORRECT",
+                                        HttpStatusCode.MethodNotAllowed => "MAJTEXT_ONLINE_METHOD_NOT_ALLOWED",
+                                        HttpStatusCode.Forbidden => "MAJTEXT_ONLINE_ACCESS_FORBIDDEN",
+                                        _ => "MAJTEXT_LOGIN_UNKNOWN_ERROR"
+                                    },
+                                    _ => "MAJTEXT_LOGIN_UNKNOWN_ERROR"
+                                };
                                 Hint($"{"MAJTEXT_LOGIN_LOGIN_FAILED".i18n()}:\n{errMsg.i18n()}", true);
                                 endpoint.AutoLogin = false;
                                 continue;
@@ -456,14 +440,9 @@ namespace MajdataPlay.Scenes.Login
                 return;
             }
             _isExited = true;
-            if(SceneSwitcher.LastScene == MajScenes.Title)
-            {
-                MajInstances.SceneSwitcher.SwitchScene("List", false);
-                return;
-            }
-            RefreshListBackgroundAsync();
+            RefreshListBackgroundAsync(refreshWholeList:SceneSwitcher.LastScene != MajScenes.Title);
         }
-        static async void RefreshListBackgroundAsync()
+        static async void RefreshListBackgroundAsync(bool refreshWholeList = false)
         {
             var sceneSwitcher = MajInstances.SceneSwitcher;
             await sceneSwitcher.FadeInAsync();
@@ -474,20 +453,38 @@ namespace MajdataPlay.Scenes.Login
             {
                 MajInstances.SceneSwitcher.SetLoadingText(e);
             };
-            var task = SongStorage.RefreshAsync(progress);
-            while (!task.IsCompleted)
+            if (refreshWholeList)
+            {
+                var task = SongStorage.RefreshAsync(progress);
+                while (!task.IsCompleted)
+                {
+                    await UniTask.Yield();
+                }
+                if (!task.IsCompletedSuccessfully)
+                {
+                    sceneSwitcher.SetLoadingText("MAJTEXT_ERR_SCAN_CHARTS_FAILED".i18n(), Color.red);
+                    await UniTask.Delay(3000);
+                }
+                else
+                {
+                    sceneSwitcher.SetLoadingText(string.Empty);
+                }
+            }
+            var task2 = SongStorage.RefreshUserOnlineFav(progress);
+            while (!task2.IsCompleted)
             {
                 await UniTask.Yield();
             }
-            if (!task.IsCompletedSuccessfully)
+            if (!task2.IsCompletedSuccessfully)
             {
-                sceneSwitcher.SetLoadingText("MAJTEXT_ERR_SCAN_CHARTS_FAILED".i18n(), Color.red);
+                sceneSwitcher.SetLoadingText("MAJTEXT_ERR_SCAN_ONLINEFAVS_FAILED".i18n(), Color.red);
             }
             else
             {
                 sceneSwitcher.SetLoadingText(string.Empty);
             }
-            await UniTask.Delay(3000);
+
+            
             sceneSwitcher.SwitchScene("List");
         }
         async UniTask SyncSettingsFromRemoteAsync(ApiEndpoint endpoint)

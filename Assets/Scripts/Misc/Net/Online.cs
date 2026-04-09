@@ -41,6 +41,7 @@ namespace MajdataPlay.Net
         public const string API_GET_USER_INFO = "account/info";
         public const string API_GET_USER_ICON = "account/icon?username={0}";
         public const string API_GET_USER_SCORES = "account/scores";
+        public const string API_GET_USER_FAVCOLLECTION = "account/favorite/collection/list";
         public const string API_GET_MAICHART_LIST = "maichart/list";
         public const string API_GET_MAICHART_INTERACT = "maichart/{0}/interact";
         public const string API_GET_MAICHART_SCORE = "maichart/{0}/score";
@@ -93,7 +94,7 @@ namespace MajdataPlay.Net
                             {
                                 var isAlive = await GetUserInfoAsync(statistics.Endpoint, token) != null;
                                 statistics.IsUserLoggedIn = isAlive;
-                                if(!isAlive)
+                                if (!isAlive)
                                 {
                                     var runtimeConfig = statistics.Endpoint.RuntimeConfig;
                                     runtimeConfig.Avatar = null;
@@ -126,11 +127,11 @@ namespace MajdataPlay.Net
                     for (var i = 0; i <= MajEnv.HTTP_REQUEST_MAX_RETRY; i++)
                     {
                         rsp = await GetAsync(uri, token);
-                        if(rsp.StatusCode is HttpStatusCode.Unauthorized)
+                        if (rsp.StatusCode is HttpStatusCode.Unauthorized)
                         {
                             return default;
                         }
-                        else if(!rsp.IsSuccessfully || !rsp.IsDeserializable)
+                        else if (!rsp.IsSuccessfully || !rsp.IsDeserializable)
                         {
                             MajDebug.LogError("Failed to get user info");
                             MajDebug.LogError($"Url:{uri}\nStatusCode:{rsp.StatusCode}\nErrorCode:{rsp.ErrorCode}\nMessage:{rsp.Message}");
@@ -142,7 +143,7 @@ namespace MajdataPlay.Net
                     }
                     return default;
                 }
-                catch(Exception e)
+                catch (Exception e)
                 {
                     MajDebug.LogError("Get Userinfo failed: ");
                     MajDebug.LogException(e);
@@ -223,7 +224,7 @@ namespace MajdataPlay.Net
                 try
                 {
                     await statistics.LockAsync();
-                    if(statistics.IsMachineRegistrationSupported is false)
+                    if (statistics.IsMachineRegistrationSupported is false)
                     {
                         goto FAST_RETURN;
                     }
@@ -395,7 +396,7 @@ namespace MajdataPlay.Net
                 {
                     throw new ArgumentNullException(nameof(apiEndpoint));
                 }
-                if (await GetUserInfoAsync(apiEndpoint)!=null)
+                if (await GetUserInfoAsync(apiEndpoint) != null)
                 {
                     return new()
                     {
@@ -406,7 +407,7 @@ namespace MajdataPlay.Net
                         Message = string.Empty
                     };
                 }
-                if(username == "YourUsername" || password == "YourUsername" ||
+                if (username == "YourUsername" || password == "YourUsername" ||
                         string.IsNullOrEmpty(username) || string.IsNullOrEmpty(password))
                 {
                     return new EndpointResponse()
@@ -418,7 +419,7 @@ namespace MajdataPlay.Net
                     };
                 }
 
-               var pwdHashStr = HashHelper.ToHexString(await HashHelper.ComputeHashAsync(Encoding.UTF8.GetBytes(password)));
+                var pwdHashStr = HashHelper.ToHexString(await HashHelper.ComputeHashAsync(Encoding.UTF8.GetBytes(password)));
                 var uri = apiEndpoint.Url.Combine(API_POST_USER_LOGIN);
 #if ENABLE_IL2CPP || MAJDATA_IL2CPP_DEBUG
                 await UniTask.SwitchToMainThread();
@@ -436,7 +437,7 @@ namespace MajdataPlay.Net
 
                 var rsp = await PostAsync(uri, formData, token);
 #endif
-                if(rsp.StatusCode is HttpStatusCode.Unauthorized)
+                if (rsp.StatusCode is HttpStatusCode.Unauthorized)
                 {
                     rsp = new(rsp.AsMemory(), DEFAULT_JSON_SERIALIZER, DEFAULT_JSON_SERIALIZER_SETTINGS)
                     {
@@ -502,7 +503,7 @@ namespace MajdataPlay.Net
             {
                 await UniTask.SwitchToThreadPool();
                 GetAllApiEndpointStatistic(rentedBuffer);
-                foreach(var statistics in rentedBuffer)
+                foreach (var statistics in rentedBuffer)
                 {
                     await statistics.LockAsync(token);
                     try
@@ -619,7 +620,7 @@ namespace MajdataPlay.Net
                         if (rsp.IsSuccessfully && rsp.IsDeserializable && rsp.TryDeserialize<MajNetSongInteract?>(out var intlist, out e) && intlist is not null)
                         {
                             MajDebug.LogDebug(rsp);
-                            if(intlist is MajNetSongInteract interactRsp)
+                            if (intlist is MajNetSongInteract interactRsp)
                             {
                                 cachedResponse.Interact.Response = interactRsp;
                                 cachedResponse.Interact.LastActive = DateTime.Now;
@@ -648,7 +649,7 @@ namespace MajdataPlay.Net
                         }
                     }
                     return null;
-                }                 
+                }
             }
         }
         public static async ValueTask<MajNetSongScoreInfo?> GetChartScoreInfoAsync(OnlineSongDetail song, CancellationToken token = default)
@@ -680,7 +681,7 @@ namespace MajdataPlay.Net
                         rsp = await GetAsync(interactUrl, token);
                         if (rsp.IsSuccessfully && rsp.IsDeserializable && rsp.TryDeserialize<MajNetSongScoreInfo?>(out var scoreInfo, out e) && scoreInfo is not null)
                         {
-                            if(scoreInfo is MajNetSongScoreInfo scoreInfoRsp)
+                            if (scoreInfo is MajNetSongScoreInfo scoreInfoRsp)
                             {
                                 cachedScoreInfo.Response = scoreInfoRsp;
                                 cachedScoreInfo.LastActive = DateTime.Now;
@@ -808,9 +809,9 @@ namespace MajdataPlay.Net
                     {
                         break;
                     }
-                    else if(rsp.StatusCode is HttpStatusCode.BadRequest 
-                        or HttpStatusCode.NotFound 
-                        or HttpStatusCode.Unauthorized 
+                    else if (rsp.StatusCode is HttpStatusCode.BadRequest
+                        or HttpStatusCode.NotFound
+                        or HttpStatusCode.Unauthorized
                         or HttpStatusCode.Forbidden)
                     {
                         break;
@@ -904,6 +905,48 @@ namespace MajdataPlay.Net
                 return null;
             }
         }
+
+        public static async ValueTask<DanInfo[]?> GetUserOnlineFavCollection(ApiEndpoint apiEndpoint, CancellationToken token = default)
+        {
+            await using (UniTask.ReturnToCurrentSynchronizationContext())
+            {
+                await UniTask.SwitchToThreadPool();
+                var url = apiEndpoint.Url.Combine(API_GET_USER_FAVCOLLECTION);
+                var rsp = default(EndpointResponse);
+
+                for (var i = 0; i < MajEnv.HTTP_REQUEST_MAX_RETRY; i++)
+                {
+                    rsp = await GetAsync(url, token);
+                    var e = default(Exception?);
+                    if (rsp.IsSuccessfully && rsp.TryDeserialize<DanInfo[]>(out var danList, out e) && danList is not null)
+                    {
+                        MajDebug.LogDebug(rsp);
+                        return danList;
+                    }
+                    else
+                    {
+                        MajDebug.LogError(rsp);
+                        MajDebug.LogError($"Failed to get dan list: {e?.Message ?? "Unknown error"}");
+                    }
+                    if (rsp.ErrorCode == HttpErrorCode.Canceled)
+                    {
+                        break;
+                    }
+                    else if (rsp.StatusCode == HttpStatusCode.Unauthorized)
+                    {
+                        MajDebug.LogError($"Failed to get online dan list: user not logged in");
+                        break;
+                    }
+                    else if (!rsp.IsSuccessfully && rsp.StatusCode is not HttpStatusCode.OK)
+                    {
+                        break;
+                    }
+                }
+
+                return null;
+            }
+        }
+
         public static async ValueTask<Sprite?> GetUserIconAsync(ApiEndpoint apiEndpoint,string username, CancellationToken token = default)
         {
             if(string.IsNullOrEmpty(username))

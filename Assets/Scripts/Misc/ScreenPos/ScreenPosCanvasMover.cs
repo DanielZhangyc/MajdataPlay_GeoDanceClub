@@ -1,4 +1,5 @@
 using MajdataPlay.Editor;
+using MajdataPlay.IO;
 using MajdataPlay.Numerics;
 using MajdataPlay.Settings;
 using MajdataPlay.Utils;
@@ -126,6 +127,10 @@ namespace MajdataPlay
         [ReadOnlyField]
         RectTransform? _subDisplay;
 
+        [SerializeField]
+        [ReadOnlyField]
+        readonly Vector3[] _subDisplayWorldCorners = new Vector3[4];
+
         DisplayOptions? _displayOptions;
 
 
@@ -171,7 +176,7 @@ namespace MajdataPlay
             {
                 _cachedScreenCenterY = _displayOptions?.MainScreenCachedScreenCenterY ?? 960f;
             }
-            if (_displayOptions != null)
+            if (_displayOptions is not null)
             {
                 _displayOptions.MainScreenCachedScreenCenterY = _cachedScreenCenterY;
             }
@@ -224,7 +229,7 @@ namespace MajdataPlay
             _screenHeight = screenRect.height / _canvasScaleFactor;
             _screenWidth = screenRect.width / _canvasScaleFactor;
         }
-        
+
         void RestoreOriginal()
         {
             // 恢复到预制体的原始状态
@@ -291,7 +296,7 @@ namespace MajdataPlay
                 //    Screen.width / newRef.x,
                 //    Screen.height / newRef.y);
                 _canvasScaler.referenceResolution = newRef;
-                float posY = (_basePosY - offset * 270f) + _cachedScreenCenterY * (1f / scale - 1f);
+                float posY = _basePosY - (offset * 270f) + (_cachedScreenCenterY * ((1f / scale) - 1f));
                 _rt.anchoredPosition = new Vector2(0, posY);
                 _rt.localScale = Vector3.one;
                 // 同步持久化Canvas（SceneSwitcher过渡动画）
@@ -307,7 +312,7 @@ namespace MajdataPlay
             else
             {
                 // 回退到localScale方式（无CanvasScaler时）
-                float posYBase = _basePosY - offset * 270f;
+                float posYBase = _basePosY - (offset * 270f);
                 float scaleCorrection = (_cachedScreenCenterY - posYBase) * (1f - scale);
                 _rt.anchoredPosition = new Vector2(0, posYBase + scaleCorrection);
                 if (scale > 0)
@@ -326,6 +331,7 @@ namespace MajdataPlay
             float newY = SUB_DISPLAY_ORIGINAL_POS_Y + offset;
             _subDisplay.anchoredPosition = new Vector2(_subDisplay.anchoredPosition.x, newY);
             _subDisplay.localScale = new Vector3(scale, scale, 1f);
+            RefreshCornersPosition();
         }
 
         void UpdateSubCover()
@@ -335,7 +341,7 @@ namespace MajdataPlay
                 // Sub_Display底边 (pivot 0.5,0.5)
                 //float subDisplayBottom = _subDisplay.anchoredPosition.y - SUB_DISPLAY_HEIGHT / 2f;
                 // Main_Display顶边 (pivot 0.5,0.5)
-                var mainDisplayTop = _rt.anchoredPosition.y + MAIN_DISPLAY_HEIGHT / 2f;
+                var mainDisplayTop = _rt.anchoredPosition.y + (MAIN_DISPLAY_HEIGHT / 2f);
 
                 var coverHeight = Mathf.Max(0f, SCREEN_CANVAS_HEIGHT - mainDisplayTop);
                 var coverCenterY = (SCREEN_CANVAS_HEIGHT + mainDisplayTop) / 2f;
@@ -345,7 +351,7 @@ namespace MajdataPlay
             }
             if(_subCoverBottomRectTransform != null)
             {
-                var mainDisplayBottom = _rt.anchoredPosition.y - MAIN_DISPLAY_HEIGHT / 2f;
+                var mainDisplayBottom = _rt.anchoredPosition.y - (MAIN_DISPLAY_HEIGHT / 2f);
                 var coverHeight = Mathf.Max(0f, mainDisplayBottom);
                 var coverCenterY = coverHeight / 2;
 
@@ -378,7 +384,21 @@ namespace MajdataPlay
                 RestoreOriginal();
             }
         }
-
+        void RefreshCornersPosition()
+        {
+            if(_subDisplay is null)
+            {
+                return;
+            }
+            _subDisplay.GetWorldCorners(_subDisplayWorldCorners);
+            var edge = new Vector4();
+            edge.x = _subDisplayWorldCorners[0].x; // left
+            edge.y = _subDisplayWorldCorners[1].y; // top
+            edge.z = _subDisplayWorldCorners[2].x; // right
+            edge.w = _subDisplayWorldCorners[3].y; // bottom
+            InputManager.SubScreenEdge = edge;
+            MajDebug.LogDebug(edge);
+        }
 
         void Update()
         {
@@ -390,6 +410,10 @@ namespace MajdataPlay
                         if (_displayOptions is null)
                         {
                             return;
+                        }
+                        if (_subDisplay != null)
+                        {
+                            RefreshCornersPosition();
                         }
                         _flag = FLAG_INITED;
                         ApplyTransform();
