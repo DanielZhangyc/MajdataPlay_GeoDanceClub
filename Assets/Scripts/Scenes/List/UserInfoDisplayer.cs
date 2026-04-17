@@ -38,11 +38,12 @@ namespace MajdataPlay
             var runtimeConfig = apiEndpoint.RuntimeConfig;
             var playerEndpoints = MajEnv.GetEndpointsByRole(EndpointRole.Player);
             var hasPlayerEndpoint = playerEndpoints.Length > 0;
-            var isPlayerLoggedIn = playerEndpoints.Any(ep => ep.RuntimeConfig.AuthMethod != NetAuthMethodOption.None);
+            var isPlayerLoggedIn = playerEndpoints.Any(ep =>
+                ep.RuntimeConfig.AuthMethod != NetAuthMethodOption.None && ep.RuntimeConfig.IsLoggedIn);
 
             IsGuest = hasPlayerEndpoint && !isPlayerLoggedIn;
 
-            if(runtimeConfig.AuthMethod == NetAuthMethodOption.None)
+            if(runtimeConfig.AuthMethod == NetAuthMethodOption.None || !runtimeConfig.IsLoggedIn)
             {
                 username_text.text = hasPlayerEndpoint ? GUEST_LOGIN_TEXT : GUEST_TEXT;
                 usericon.sprite = null;

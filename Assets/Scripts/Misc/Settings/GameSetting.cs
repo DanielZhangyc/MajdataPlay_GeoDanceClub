@@ -49,6 +49,8 @@ namespace MajdataPlay.Settings
         public bool StarRotation { get; set; } = true;
         
         public BGInfoOption BGInfo { get; set; } = BGInfoOption.Combo;
+        public BGInfoOption SecondaryBGInfo { get; set; } = BGInfoOption.None;
+        public BGInfoOption SubScreenBGInfo { get; set; } = BGInfoOption.Achievement;
         
         public TopInfoDisplayOption TopInfo { get; set; } = TopInfoDisplayOption.None;
         
@@ -506,9 +508,7 @@ namespace MajdataPlay.Settings
         
         public TouchPanelOptions TouchPanel { get; set; } = new();
 #else
-        
-        public bool EnableKeyboardInput { get; set; } = false;
-        public bool EnableGamepadInput { get; set; } = false;
+        public MobileExternalButtonRingOption ExternalButtonRing { get; init; } = MobileExternalButtonRingOption.None;
 #endif
     }
 #if UNITY_STANDALONE
