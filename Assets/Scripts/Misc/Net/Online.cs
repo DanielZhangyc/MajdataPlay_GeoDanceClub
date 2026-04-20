@@ -441,18 +441,28 @@ namespace MajdataPlay.Net
             runtimeConfig.AuthPassword = password;
             runtimeConfig.Username = username;
 
-            var userInfo = await GetUserInfoAsync(apiEndpoint, token);
+            var userInfoRsp = await GetUserInfoAsync(apiEndpoint, token);
             var userScores = await GetUserScoresAsync(apiEndpoint, token);
             ScoreManager.LoadOnlineScores(userScores, apiEndpoint.Name);
-            if (userInfo is null)
+            var resolvedUserInfo = default(UserSummary?);
+            if (userInfoRsp.TryDeserialize(out var userInfo, out var userInfoError))
+            {
+                resolvedUserInfo = userInfo;
+            }
+            else
+            {
+                MajDebug.LogError("Failed to get user info");
+                MajDebug.LogException(userInfoError);
+            }
+            if (resolvedUserInfo is null)
             {
                 runtimeConfig.Avatar = null;
                 return true;
             }
 
-            var resolvedUserInfo = userInfo.Value;
-            runtimeConfig.Username = resolvedUserInfo.Username;
-            runtimeConfig.Avatar = await GetUserIconAsync(apiEndpoint, resolvedUserInfo.Username, token);
+            var summary = (UserSummary)resolvedUserInfo;
+            runtimeConfig.Username = summary.Username;
+            runtimeConfig.Avatar = await GetUserIconAsync(apiEndpoint, summary.Username, token);
             return true;
         }
         public static async ValueTask LogoutAllAsync(CancellationToken token = default)
@@ -506,8 +516,7 @@ namespace MajdataPlay.Net
                     {
                         continue;
                     }
-                    await statistics.LockAsync(token);
-                    try
+                    using (await statistics.LockAsync(token))
                     {
                         var apiEndpoint = statistics.Endpoint;
                         try
@@ -528,16 +537,13 @@ namespace MajdataPlay.Net
                         }
                         finally
                         {
+                            statistics.IsUserLoggedIn = false;
                             apiEndpoint.RuntimeConfig.AuthMethod = NetAuthMethodOption.None;
                             apiEndpoint.RuntimeConfig.Avatar = null;
                             apiEndpoint.RuntimeConfig.Username = "???";
                             apiEndpoint.RuntimeConfig.AuthUsername = apiEndpoint.Username;
                             apiEndpoint.RuntimeConfig.AuthPassword = apiEndpoint.Password;
                         }
-                    }
-                    finally
-                    {
-                        statistics.Unlock();
                     }
                 }
             }
@@ -771,7 +777,7 @@ namespace MajdataPlay.Net
             {
                 await UniTask.SwitchToThreadPool();
                 var scoreUrl = BuildMaiChartUri(endpoint, API_POST_MAICHART_SCORE, chartId);
-                var json = await Serializer.Json.SerializeAsync(score, DEFAULT_JSON_SERIALIZER);
+                var json = await Serializer.Json.SerializeAsync(score, _defaultJsonSerializer);
                 var rsp = default(EndpointResponse);
 
                 for (var i = 0; i < MajEnv.HTTP_REQUEST_MAX_RETRY; i++)
@@ -977,7 +983,7 @@ namespace MajdataPlay.Net
                 try
                 {
                     var uri = apiEndpoint.Url.Combine(API_PUT_ACCOUNT_SETTINGS);
-                    var json = await Serializer.Json.SerializeAsync(request, DEFAULT_JSON_SERIALIZER);
+                    var json = await Serializer.Json.SerializeAsync(request, _defaultJsonSerializer);
                     var rsp = default(EndpointResponse);
                     for (var i = 0; i <= MajEnv.HTTP_REQUEST_MAX_RETRY; i++)
                     {
@@ -1348,7 +1354,7 @@ namespace MajdataPlay.Net
                         buffer = new byte[nativeBuffer.Length];
                         nativeBuffer.CopyTo(buffer);
                     }
-                    return new EndpointResponse(buffer, DEFAULT_JSON_SERIALIZER, DEFAULT_JSON_SERIALIZER_SETTINGS)
+                    return new EndpointResponse(buffer, _defaultJsonSerializer, _defaultJsonSerializerSettings)
                     {
                         IsSuccessfully = true,
                         IsDeserializable = true && buffer.Length != 0,
@@ -1361,7 +1367,7 @@ namespace MajdataPlay.Net
                 catch (HttpException httpE)
                 {
                     MajDebug.LogException(httpE);
-                    return new EndpointResponse(Array.Empty<byte>(), DEFAULT_JSON_SERIALIZER, DEFAULT_JSON_SERIALIZER_SETTINGS)
+                    return new EndpointResponse(Array.Empty<byte>(), _defaultJsonSerializer, _defaultJsonSerializerSettings)
                     {
                         IsSuccessfully = false,
                         IsDeserializable = false,
@@ -1374,7 +1380,7 @@ namespace MajdataPlay.Net
                 catch (Exception e)
                 {
                     MajDebug.LogException(e);
-                    return new EndpointResponse(Array.Empty<byte>(), DEFAULT_JSON_SERIALIZER, DEFAULT_JSON_SERIALIZER_SETTINGS)
+                    return new EndpointResponse(Array.Empty<byte>(), _defaultJsonSerializer, _defaultJsonSerializerSettings)
                     {
                         IsSuccessfully = false,
                         IsDeserializable = false,
@@ -1427,7 +1433,7 @@ namespace MajdataPlay.Net
                 {
                     errorCode = HttpErrorCode.Canceled;
                 }
-                return new EndpointResponse(Array.Empty<byte>(), DEFAULT_JSON_SERIALIZER, DEFAULT_JSON_SERIALIZER_SETTINGS)
+                return new EndpointResponse(Array.Empty<byte>(), _defaultJsonSerializer, _defaultJsonSerializerSettings)
                 {
                     IsSuccessfully = false,
                     IsDeserializable = false,
@@ -1439,7 +1445,7 @@ namespace MajdataPlay.Net
             catch (Exception e)
             {
                 MajDebug.LogException(e);
-                return new EndpointResponse(Array.Empty<byte>(), DEFAULT_JSON_SERIALIZER, DEFAULT_JSON_SERIALIZER_SETTINGS)
+                return new EndpointResponse(Array.Empty<byte>(), _defaultJsonSerializer, _defaultJsonSerializerSettings)
                 {
                     IsSuccessfully = false,
                     IsDeserializable = false,
@@ -1456,7 +1462,7 @@ namespace MajdataPlay.Net
                 var client = MajEnv.SharedHttpClient;
                 var rsp = await client.PutAsync(uri, content, token);
                 var buffer = await rsp.Content.ReadAsByteArrayAsync();
-                return new EndpointResponse(buffer, DEFAULT_JSON_SERIALIZER, DEFAULT_JSON_SERIALIZER_SETTINGS)
+                return new EndpointResponse(buffer, _defaultJsonSerializer, _defaultJsonSerializerSettings)
                 {
                     IsSuccessfully = rsp.StatusCode == HttpStatusCode.OK,
                     IsDeserializable = rsp.StatusCode == HttpStatusCode.OK,
