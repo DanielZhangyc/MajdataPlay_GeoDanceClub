@@ -473,7 +473,7 @@ namespace MajdataPlay.Scenes.List
                 {
                     MajEnv.RuntimeConfig.Setting.IgnoreChartSettingPage = false;
                 }
-                MajInstances.SceneSwitcher.SwitchScene("Setting");
+                MajInstances.SceneSwitcher.SwitchScene("Setting", false);
                 _isExited = true;
                 return;
             }
@@ -488,7 +488,7 @@ namespace MajdataPlay.Scenes.List
                 {
                     MajEnv.RuntimeConfig.Setting.IgnoreChartSettingPage = false;
                 }
-                MajInstances.SceneSwitcher.SwitchScene("Setting");
+                MajInstances.SceneSwitcher.SwitchScene("Setting", false);
                 _isExited = true;
                 return;
             }
@@ -595,7 +595,7 @@ namespace MajdataPlay.Scenes.List
                 sceneSwitcher.SetLoadingText(string.Empty);
             }
             await UniTask.Delay(3000);
-            sceneSwitcher.SwitchScene("List");
+            sceneSwitcher.SwitchScene("List", false);
         }
         void EnterDan()
         {

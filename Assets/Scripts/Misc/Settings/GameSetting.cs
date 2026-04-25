@@ -55,8 +55,12 @@ namespace MajdataPlay.Settings
         public TopInfoDisplayOption TopInfo { get; set; } = TopInfoDisplayOption.None;
         
         public bool TrackSkip { get; set; } = true;
+
+        public AutoTrackSkipOption AutoTrackSkip { get; set; } = AutoTrackSkipOption.Disabled;
         
         public bool FastRetry { get; set; } = true;
+        
+        public AutoQuickRetryOption AutoQuickRetry { get; set; } = AutoQuickRetryOption.Disabled;
         
         public MirrorOption Mirror { get; set; } = MirrorOption.Off;
         
@@ -526,7 +530,7 @@ namespace MajdataPlay.Settings
         
         public float Brightness { get; set; } = 1.0f;
         
-        public int RefreshRateMs { get; set; } = 100;
+        public int RefreshRateMs { get; set; } = 16;
         
         public bool Throttler { get; set; } = false;
         
