@@ -317,7 +317,8 @@ namespace MajdataPlay.Scenes.Login
                             authSessionTask = RegistryAuthSession(endpoint, cts.Token);
                         }
                         //cancel button
-                        if (InputManager.IsSensorClickedUpInThisFrame(SensorArea.A5))
+                        if (InputManager.IsSensorClickedUpInThisFrame(SensorArea.A5) ||
+                            InputManager.IsButtonClickedInThisFrame(ButtonZone.A5))
                         {
                             if (_requiresPlayerLogin && endpoint.Role == EndpointRole.Player)
                             {
@@ -336,8 +337,9 @@ namespace MajdataPlay.Scenes.Login
                             break;
                         }
                         //login button
-                        else if (InputManager.IsSensorClickedUpInThisFrame(SensorArea.A4) 
-                            || (endpoint.AutoLogin == true
+                        else if (InputManager.IsSensorClickedUpInThisFrame(SensorArea.A4) ||
+                            InputManager.IsButtonClickedInThisFrame(ButtonZone.A4) ||
+                            (endpoint.AutoLogin == true
                             && SceneSwitcher.LastScene == MajScenes.Title
                             && !string.IsNullOrEmpty(endpoint.Username)
                             && !string.IsNullOrEmpty(endpoint.Password)))

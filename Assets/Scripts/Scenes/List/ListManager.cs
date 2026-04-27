@@ -161,7 +161,7 @@ namespace MajdataPlay.Scenes.List
                 MajInstances.SceneSwitcher.FadeOut();
                 _coverListDisplayer.SlideToDifficulty((int)_listConfig.SelectedDiff);
                 _isInited = true;
-                LedRing.SetSineFunc(3, Color.green, 1000);
+                LedRing.SetButtonLight(Color.green, 3);
                 LedRing.SetButtonLight(Color.red, 4);
                 LedRing.SetButtonLight(Color.blue, 2);
                 LedRing.SetButtonLight(Color.blue, 5);

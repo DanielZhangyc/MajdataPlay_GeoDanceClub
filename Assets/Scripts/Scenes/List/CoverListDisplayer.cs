@@ -764,14 +764,39 @@ namespace MajdataPlay.Scenes.List
             }
 
             var bpm = chartAnalyzer.LastAnalyzeBpm;
+            if (chartAnalyzer.LastAnalyzeIsEmpty)
+            {
+                LedRing.SetButtonLight(Color.red, 3);
+                CabinetLight.SetLight(1.0f);
+                return;
+            }
+            LedRing.SetButtonLight(Color.green, 3);
+            CabinetLight.SetLight(1.0f);
+            while (IsChartList &&
+                   ReferenceEquals(_currentCollection.Current, songDetail) &&
+                   _listConfig.SelectedDiff == level &&
+                   _previewSoundPlayer.IsPreviewPending(songDetail) &&
+                   !_previewSoundPlayer.IsPreviewPlaying(songDetail))
+            {
+                await UniTask.Yield();
+            }
+            if (!IsChartList ||
+                !ReferenceEquals(_currentCollection.Current, songDetail) ||
+                _listConfig.SelectedDiff != level ||
+                !_previewSoundPlayer.IsPreviewPlaying(songDetail))
+            {
+                return;
+            }
             if (bpm <= 0f)
             {
-                LedRing.SetSineFunc(3, Color.green, 1000);
+                LedRing.SetButtonLight(Color.green, 3);
+                CabinetLight.SetLight(1.0f);
                 return;
             }
 
             var halfNoteMs = 120000f / bpm;
             LedRing.SetSineFunc(3, Color.green, (long)halfNoteMs);
+            CabinetLight.SetLightSineFunc(1.0f, (long)(halfNoteMs * 2));
         }
         void UpdateCurrentSongCollection()
         {
