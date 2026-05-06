@@ -30,7 +30,12 @@ namespace MajdataPlay.Settings
     
     public class GameOptions
     {
-        
+#if UNITY_ANDROID || UNITY_IOS
+        public const GameplaySubScreenClickBehaviorOption DEFAULT_GameplaySubScreenClickBehavior = GameplaySubScreenClickBehaviorOption.TrackSkip_1_Sec_Delay;
+#else
+        public const GameplaySubScreenClickBehaviorOption DEFAULT_GameplaySubScreenClickBehavior = GameplaySubScreenClickBehaviorOption.TrackSkip;
+#endif
+
         [Step("0.25")]
         [Range(HasMax = false, HasMin = false)]
         public float TapSpeed { get; set; } = 7.5f;
@@ -56,11 +61,11 @@ namespace MajdataPlay.Settings
         
         public bool TrackSkip { get; set; } = true;
 
-        public AutoTrackSkipOption AutoTrackSkip { get; set; } = AutoTrackSkipOption.Disabled;
+        public EnforceGameFailureCondition EnforceGameFailure { get; set; } = EnforceGameFailureCondition.Disabled;
         
         public bool FastRetry { get; set; } = true;
         
-        public AutoQuickRetryOption AutoQuickRetry { get; set; } = AutoQuickRetryOption.Disabled;
+        public GameplaySubScreenClickBehaviorOption GameplaySubScreenClickBehavior { get; set; } = DEFAULT_GameplaySubScreenClickBehavior;
         
         public MirrorOption Mirror { get; set; } = MirrorOption.Off;
         
