@@ -36,7 +36,7 @@ namespace MajdataPlay.Scenes.Game.Notes.Behaviours
             var stars = Stars.Span;
             var starTransforms = StarTransforms.Span;
 
-            var slideParent = _noteManager.transform.GetChild(3);
+            var slideParent = NoteManager.transform.GetChild(3);
             var centerStar = Instantiate(SlideStarPrefab, slideParent);
             var leftStar = Instantiate(SlideStarPrefab, slideParent);
             var rightStar = Instantiate(SlideStarPrefab, slideParent);
@@ -115,28 +115,30 @@ namespace MajdataPlay.Scenes.Game.Notes.Behaviours
             {
                 return;
             }
+
             _wifiTable.Dispose();
             _wifiTable = SlideTables.GetWifiTable(StartPos);
             var wifiConst = _wifiTable.Const;
+            JudgeQueueLength = 4;
 
             JudgeQueues[0] = _wifiTable.Left;
             JudgeQueues[1] = _wifiTable.Center;
             JudgeQueues[2] = _wifiTable.Right;
 
-            _judgeTiming = StartTiming + Length * (1 - wifiConst);
+            JudgeTiming = StartTiming + Length * (1 - wifiConst);
             LastWaitTimeSec = Length * wifiConst;
 
             // 计算Slide淡入时机
             // 在8.0速时应当提前300ms显示Slide
             FadeInTiming = -3.926913f / Speed;
             var fadeInOffset = 0f;
-            if (_settings.Debug.OffsetUnit == OffsetUnitOption.Second)
+            if (Settings.Debug.OffsetUnit == OffsetUnitOption.Second)
             {
-                fadeInOffset = _settings.Game.SlideFadeInOffset;
+                fadeInOffset = Settings.Game.SlideFadeInOffset;
             }
             else
             {
-                fadeInOffset = _settings.Game.SlideFadeInOffset * MajEnv.FRAME_LENGTH_SEC;
+                fadeInOffset = Settings.Game.SlideFadeInOffset * MajEnv.FRAME_LENGTH_SEC;
             }
             FadeInMaxAlpha = 1f;
             FadeInTiming += fadeInOffset;
@@ -251,7 +253,7 @@ namespace MajdataPlay.Scenes.Game.Notes.Behaviours
                 for (var i = 0; i < fAreas.Length; i++)
                 {
                     var area = fAreas[i];
-                    var sensorState = _noteManager.GetSensorStatusInThisFrame(area);
+                    var sensorState = NoteManager.GetSensorStatusInThisFrame(area);
                     first.Check(area, sensorState);
                 }
 
@@ -267,7 +269,7 @@ namespace MajdataPlay.Scenes.Game.Notes.Behaviours
                     for (var i = 0; i < sAreas.Length; i++)
                     {
                         var area = sAreas[i];
-                        var sensorState = _noteManager.GetSensorStatusInThisFrame(area);
+                        var sensorState = NoteManager.GetSensorStatusInThisFrame(area);
                         second.Check(area, sensorState);
                     }
 
@@ -305,7 +307,7 @@ namespace MajdataPlay.Scenes.Game.Notes.Behaviours
                 IsCheckable = true;
             }
 
-            if (!_isJudged)
+            if (!IsJudged)
             {
                 if (IsFinished)
                 {
@@ -357,13 +359,19 @@ namespace MajdataPlay.Scenes.Game.Notes.Behaviours
                     return 9;
                 }
             }
-            var nums = new int[3];
-            foreach (var (i, queue) in JudgeQueues.WithIndex())
-                nums[i] = queue.Length;
-            var max = nums.Max();
-            var index = nums.FindIndex(x => x == max);
+            var maxRemaing = 0;
+            var index2Hide = int.MaxValue;
+            for (var i = 0; i < JudgeQueues.Length; i++)
+            {
+                var queue = JudgeQueues[i];
+                if(queue.Length > maxRemaing)
+                {
+                    maxRemaing = queue.Length;
+                    index2Hide = queue.Span[0].ArrowProgressWhenFinished;
+                }
+            }
 
-            return JudgeQueues[index].Span[0].ArrowProgressWhenFinished;
+            return index2Hide;
         }
         [OnPreUpdate]
         void OnPreUpdate()
@@ -379,8 +387,10 @@ namespace MajdataPlay.Scenes.Game.Notes.Behaviours
         {
             using (UnityProfiler.Create("WifiDrop.OnUpdate"))
             {
-                Autoplay();
+                AutoplayUpdate();
                 SensorCheck();
+                MineCheck();
+
                 var stars = Stars.Span;
                 var starTransforms = StarTransforms.Span;
                 switch (State)
@@ -468,13 +478,13 @@ namespace MajdataPlay.Scenes.Game.Notes.Behaviours
                 }
             }
         }
-        protected override void Autoplay()
+        void AutoplayUpdate()
         {
             if (!IsAutoplay)
             {
                 return;
             }
-            switch(State)
+            switch (State)
             {
                 case NoteStatus.Running:
                 case NoteStatus.Arrived:
@@ -482,48 +492,84 @@ namespace MajdataPlay.Scenes.Game.Notes.Behaviours
                 default:
                     return;
             }
-            switch(AutoplayMode)
+            switch (AutoplayMode)
             {
                 case AutoplayModeOption.Enable:
-                    var process = ((Length - GetRemainingTimeWithoutOffset()) / Length).Clamp(0, 1);
-                    var queueMemory = JudgeQueues[0];
-                    var queue = queueMemory.Span;
-                    if (queueMemory.IsEmpty)
-                    {
-                        return;
-                    }
-                    else if (process >= 1)
-                    {
-                        HideAllBar();
-                        var autoplayGrade = AutoplayGrade;
-                        if (((int)autoplayGrade).InRange(0, 14))
-                            _judgeResult = autoplayGrade;
-                        else
-                            _judgeResult = (JudgeGrade)_randomizer.Next(0, 15);
-                        _isJudged = true;
-                        LastWaitTimeSec = 0;
-                        _judgeDiff = _judgeResult switch
-                        {
-                            < JudgeGrade.Perfect => 1,
-                            > JudgeGrade.Perfect => -1,
-                            _ => 0
-                        };
-                        return;
-                    }
-                    else if (process > 0)
-                        PlaySFX();
-                    var areaIndex = (int)(process * queueMemory.Length) - 1;
-                    if (areaIndex < 0)
-                    {
-                        return;
-                    }
-                    var barIndex = queue[areaIndex].ArrowProgressWhenFinished;
-                    HideBar(barIndex);
+                    Autoplay();
                     break;
                 case AutoplayModeOption.DJAuto_ButtonRing_First:
                 case AutoplayModeOption.DJAuto_TouchPanel_First:
                     DJAutoplay();
                     break;
+            }
+        }
+        protected override void Autoplay()
+        {
+            var process = ((Length - GetRemainingTimeWithoutOffset()) / Length).Clamp(0, 1);
+            var queues = JudgeQueues.AsSpan();
+            if (QueueRemaining == 0)
+            {
+                return;
+            }
+            else if (process >= 1)
+            {
+                AutoplayProgress = 1;
+                HideAllBar();
+                var autoplayGrade = AutoplayGrade;
+                if (((int)autoplayGrade).InRange(0, 14))
+                {
+                    JudgeResult = autoplayGrade;
+                }
+                else
+                {
+                    JudgeResult = (JudgeGrade)Randomizer.Next(0, 15);
+                }
+                IsJudged = true;
+                LastWaitTimeSec = 0;
+                JudgeDiff = JudgeResult switch
+                {
+                    < JudgeGrade.Perfect => 1,
+                    > JudgeGrade.Perfect => -1,
+                    _ => 0
+                };
+                return;
+            }
+            else if (process > 0)
+            {
+                PlaySFX();
+            }
+            AutoplayProgress = process;
+            var areaIndex = (int)(process * JudgeQueueLength) - 1;
+            if (areaIndex < 0)
+            {
+                return;
+            }
+            var lastAreaIndex = AutoplayLastAreaIndex;
+            if (lastAreaIndex != areaIndex)
+            {
+                AutoplayLastAreaIndex = areaIndex;
+                var remaining = JudgeQueueLength - areaIndex;
+                for(var i = 0; i < queues.Length; i++)
+                {
+                    ref var queueMemory = ref queues[i];
+                    var indexDelta = queueMemory.Length - remaining;
+                    if (indexDelta > 0)
+                    {
+                        queueMemory = queueMemory.Slice(indexDelta);
+                    }
+                }
+            }
+            if(process > 0.7)
+            {
+                HideBar(9);
+            }
+            else if (process > 0.4)
+            {
+                HideBar(5);
+            }
+            else if (process > 0.15)
+            {
+                HideBar(2);
             }
         }
         void DJAutoplay()
@@ -560,7 +606,7 @@ namespace MajdataPlay.Scenes.Game.Notes.Behaviours
         }
         protected override void TooLateJudge()
         {
-            if (_isJudged)
+            if (IsJudged)
             {
                 End();
                 return;
@@ -576,20 +622,20 @@ namespace MajdataPlay.Scenes.Game.Notes.Behaviours
             }
             State = NoteStatus.End;
             base.End();
-            ConvertJudgeGrade(ref _judgeResult);
+            ConvertJudgeGrade(ref JudgeResult);
             if (!ModInfo.SubdivideSlideJudgeGrade)
             {
-                JudgeGradeCorrection(ref _judgeResult);
+                JudgeGradeCorrection(ref JudgeResult);
             }
             var result = new NoteJudgeResult()
             {
-                Grade = _judgeResult,
-                Diff = _judgeDiff,
+                Grade = JudgeResult,
+                Diff = JudgeDiff,
                 IsEX = IsEX,
                 IsBreak = IsBreak
             };
 
-            _objectCounter.ReportResult(this, result, Multiple);
+            ObjectCounter.ReportResult(this, result, Multiple);
             if (PlaySlideOK(result))
             {
                 SlideOK!.PlayResult(result);
@@ -605,16 +651,30 @@ namespace MajdataPlay.Scenes.Game.Notes.Behaviours
             var starSprite = skin.Star.Normal;
             Material? breakMaterial = null;
 
-            if (IsEach)
+            if (IsMine)
             {
-                barSprites = skin.Each;
-                starSprite = skin.Star.Each;
+                barSprites = skin.Mine;
+                starSprite = skin.Star.Mine;
+                if (IsBreak)
+                {
+                    barSprites = skin.BreakMine;
+                    starSprite = skin.Star.BreakMine;
+                    breakMaterial = BreakMaterial;
+                }
             }
-            if (IsBreak)
+            else
             {
-                barSprites = skin.Break;
-                starSprite = skin.Star.Break;
-                breakMaterial = BreakMaterial;
+                if (IsEach)
+                {
+                    barSprites = skin.Each;
+                    starSprite = skin.Star.Each;
+                }
+                if (IsBreak)
+                {
+                    barSprites = skin.Break;
+                    starSprite = skin.Star.Break;
+                    breakMaterial = BreakMaterial;
+                }
             }
             foreach (var (i, renderer) in barRenderers.WithIndex())
             {

@@ -1,4 +1,5 @@
 ﻿using MajdataPlay.Buffers;
+using MajdataPlay.Game.Notes;
 using MajdataPlay.IO;
 using MajdataPlay.Numerics;
 using MajdataPlay.Scenes.Game.Buffers;
@@ -55,6 +56,7 @@ namespace MajdataPlay.Scenes.Game.Notes.Behaviours
         [SerializeField]
         GameObject _tapLinePrefab;
 
+        EachLineBinding? _eachLineBinding;
 
         Transform _tapLineTransform;
         GameObject _tapLineObject;
@@ -82,15 +84,15 @@ namespace MajdataPlay.Scenes.Game.Notes.Behaviours
         protected override void Awake()
         {
             base.Awake();
-            _noteAppearRate = MajInstances.Settings.Debug.NoteAppearRate;
-            _isStarRotation = _settings.Game.StarRotation;
+            _noteAppearRate = MajEnv.Settings.Debug.NoteAppearRate;
+            _isStarRotation = Settings.Game.StarRotation;
             _notePoolManager = FindObjectOfType<NotePoolManager>();
             _thisRenderer = GetComponent<SpriteRenderer>();
 
             _exObject = Transform.GetChild(0).gameObject;
             _exRenderer = _exObject.GetComponent<SpriteRenderer>();
 
-            _tapLineObject = Instantiate(_tapLinePrefab, _noteManager.gameObject.transform.GetChild(7));
+            _tapLineObject = Instantiate(_tapLinePrefab, NoteManager.gameObject.transform.GetChild(7));
             _tapLineObject.SetActive(true);
             _tapLineRenderer = _tapLineObject.GetComponent<SpriteRenderer>();
             _tapLineTransform = _tapLineObject.transform;
@@ -113,30 +115,43 @@ namespace MajdataPlay.Scenes.Game.Notes.Behaviours
             {
                 return;
             }
+            _eachLineBinding = poolingInfo.EachLineBinding;
+            if (_eachLineBinding is not null)
+            {
+                _eachLineBinding.Bind(this);
+            }
             StartPos = poolingInfo.StartPos;
             Timing = poolingInfo.Timing;
-            _judgeTiming = Timing;
+            JudgeTiming = Timing;
             SortOrder = poolingInfo.NoteSortOrder;
             Speed = poolingInfo.Speed;
             IsEach = poolingInfo.IsEach;
             IsBreak = poolingInfo.IsBreak;
             IsEX = poolingInfo.IsEX;
+            IsMine = poolingInfo.IsMine;
             QueueInfo = poolingInfo.QueueInfo;
             IsStar = poolingInfo.IsStar;
             IsDouble = poolingInfo.IsDouble;
             RotateSpeed = poolingInfo.RotateSpeed;
-            _isJudged = false;
+            IsJudged = false;
             Distance = -100;
             _innerPos = NoteHelper.GetTapPosition(StartPos, 1.225f);
             _outerPos = NoteHelper.GetTapPosition(StartPos, 4.8f);
-            _sensorPos = (SensorArea)(StartPos - 1);
-            _buttonPos = _sensorPos.ToButtonZone();
-            _judgableRange = new(JudgeTiming - 0.15f, JudgeTiming + 0.15f, ContainsType.Closed);
+            SensorPos = (SensorArea)(StartPos - 1);
+            _buttonPos = SensorPos.ToButtonZone();
+            if (IsMine)
+            {
+                JudgableRange = new(JudgeTimingWithOffset - (TAP_JUDGE_SEG_3RD_PERFECT_MSEC / 1000), JudgeTimingWithOffset + (TAP_JUDGE_SEG_3RD_PERFECT_MSEC / 1000), ContainsType.Closed);
+            }
+            else
+            {
+                JudgableRange = new(JudgeTimingWithOffset - (TAP_JUDGE_GOOD_AREA_MSEC / 1000), JudgeTimingWithOffset + (TAP_JUDGE_GOOD_AREA_MSEC / 1000), ContainsType.Closed);
+            }
 
-            Transform.rotation = Quaternion.Euler(0, 0, -22.5f + -45f * (StartPos - 1));
+            Transform.rotation = Quaternion.Euler(0, 0, -22.5f + (-45f * (StartPos - 1)));
             Transform.localScale = new Vector3(0, 0);
 
-            _tapLineObject.transform.rotation = Quaternion.Euler(0, 0, -22.5f + -45f * (StartPos - 1));
+            _tapLineObject.transform.rotation = Quaternion.Euler(0, 0, -22.5f + (-45f * (StartPos - 1)));
             _thisRenderer.sortingOrder = SortOrder - TAP_SPRITE_SORT_ORDER;
             _exRenderer.sortingOrder = SortOrder - TAP_EX_SORT_ORDER;
 
@@ -154,36 +169,42 @@ namespace MajdataPlay.Scenes.Game.Notes.Behaviours
             }
             State = NoteStatus.End;
 
+            if (_eachLineBinding is not null)
+            {
+                _eachLineBinding.Unbind(this);
+                _eachLineBinding = null;
+            }
             SetActive(false);
             RendererState = RendererStatus.Off;
             var result = new NoteJudgeResult()
             {
-                Grade = _judgeResult,
+                Grade = JudgeResult,
                 IsBreak = IsBreak,
+                IsMine = IsMine,
                 IsEX = IsEX,
-                Diff = _judgeDiff
+                Diff = JudgeDiff
             };
             PlayJudgeSFX(result);
+            EffectManager.PlayTapJudgeResult(StartPos, result);
             //MajDebug.LogDebug($"Note index: {QueueInfo.Index}");
-            _noteManager.NextNote(QueueInfo);
-            
-            _effectManager.PlayEffect(StartPos, result);
-            _objectCounter.ReportResult(this, result);
+            NoteManager.NextNote(QueueInfo);
+            ObjectCounter.ReportResult(this, result);
             _notePoolManager.Collect(this);
         }
         protected override void PlaySFX()
         {
             PlayJudgeSFX(new NoteJudgeResult()
             {
-                Grade = _judgeResult,
+                Grade = JudgeResult,
                 IsBreak = IsBreak,
                 IsEX = IsEX,
-                Diff = _judgeDiff
+                IsMine = IsMine,
+                Diff = JudgeDiff
             });
         }
         protected override void PlayJudgeSFX(in NoteJudgeResult judgeResult)
         {
-            _audioEffMana.PlayTapSound(judgeResult);
+            AudioEffMana.PlayTapSound(judgeResult);
         }
         [OnPreUpdate]
         void OnPreUpdate()
@@ -192,16 +213,21 @@ namespace MajdataPlay.Scenes.Game.Notes.Behaviours
             {
                 TooLateCheck();
                 Check();
+                MineCheck();
                 Autoplay();
             }
         }
         protected override void Autoplay()
         {
+            if (IsMine)
+            {
+                return;
+            }
             switch(AutoplayMode)
             {
                 case AutoplayModeOption.Enable:
                     base.Autoplay();
-                    if(_isJudged)
+                    if(IsJudged)
                     {
                         End();
                     }
@@ -214,11 +240,11 @@ namespace MajdataPlay.Scenes.Game.Notes.Behaviours
         }
         void DJAutoplay()
         {
-            if (_isJudged || !IsAutoplay)
+            if (IsJudged || !IsAutoplay)
             {
                 return;
             }
-            else if (!_noteManager.IsCurrentNoteJudgeable(QueueInfo))
+            else if (!NoteManager.IsCurrentNoteJudgeable(QueueInfo))
             {
                 return;
             }
@@ -230,13 +256,13 @@ namespace MajdataPlay.Scenes.Game.Notes.Behaviours
 
             if (isBtnFirst)
             {
-                _ = _noteManager.SimulateButtonClick(_buttonPos) ||
-                    (USERSETTING_DJAUTO_POLICY == DJAutoPolicyOption.Permissive && _noteManager.SimulateSensorClick(_sensorPos));
+                _ = NoteManager.SimulateButtonClick(_buttonPos) ||
+                    (USERSETTING_DJAUTO_POLICY == DJAutoPolicyOption.Permissive && NoteManager.SimulateSensorClick(SensorPos));
             }
             else
             {
-                _ = _noteManager.SimulateSensorClick(_sensorPos) ||
-                    (USERSETTING_DJAUTO_POLICY == DJAutoPolicyOption.Permissive && _noteManager.SimulateButtonClick(_buttonPos));
+                _ = NoteManager.SimulateSensorClick(SensorPos) ||
+                    (USERSETTING_DJAUTO_POLICY == DJAutoPolicyOption.Permissive && NoteManager.SimulateButtonClick(_buttonPos));
             }
         }
         [OnUpdate]
@@ -302,7 +328,7 @@ namespace MajdataPlay.Scenes.Game.Notes.Behaviours
         void TooLateCheck()
         {
             // Too late check
-            if (_isJudged || IsEnded || AutoplayMode == AutoplayModeOption.Enable)
+            if (IsJudged || IsEnded || AutoplayMode == AutoplayModeOption.Enable)
             {
                 return;
             }
@@ -313,8 +339,8 @@ namespace MajdataPlay.Scenes.Game.Notes.Behaviours
             if (isTooLate)
             {
                 //MajDebug.LogWarning("Note too late");
-                _judgeResult = JudgeGrade.Miss;
-                _isJudged = true;
+                JudgeResult = JudgeGrade.Miss;
+                IsJudged = true;
                 End();
             }
         }
@@ -324,16 +350,16 @@ namespace MajdataPlay.Scenes.Game.Notes.Behaviours
             {
                 return;
             }
-            else if (!_judgableRange.InRange(ThisFrameSec) || !_noteManager.IsCurrentNoteJudgeable(QueueInfo))
+            else if (!JudgableRange.InRange(ThisFrameSec) || !NoteManager.IsCurrentNoteJudgeable(QueueInfo))
             {
                 return;
             }
 
-            if (_noteManager.IsButtonClickedInThisFrame(_buttonPos) && _noteManager.TryUseButtonClickEvent(_buttonPos))
+            if (NoteManager.IsButtonClickedInThisFrame(_buttonPos) && NoteManager.TryUseButtonClickEvent(_buttonPos))
             {
                 Judge(ThisFrameSec);
             }
-            else if (_noteManager.IsSensorClickedInThisFrame(_sensorPos) && _noteManager.TryUseSensorClickEvent(_sensorPos))
+            else if (NoteManager.IsSensorClickedInThisFrame(SensorPos) && NoteManager.TryUseSensorClickEvent(SensorPos))
             {
                 Judge(ThisFrameSec - USERSETTING_TOUCHPANEL_OFFSET_SEC);
             }
@@ -342,9 +368,33 @@ namespace MajdataPlay.Scenes.Game.Notes.Behaviours
                 return;
             }
 
-            if (_isJudged)
+            if (IsJudged)
             {
+                if(IsMine)
+                {
+                    if(JudgeResult >= JudgeGrade.Perfect)
+                    {
+                        JudgeResult = JudgeGrade.TooFast;
+                    }
+                    else
+                    {
+                        JudgeResult = JudgeGrade.Miss;
+                    }
+                }
                 //MajDebug.LogError("Note is judged");
+                End();
+            }
+        }
+        void MineCheck()
+        {
+            if (!IsMine || IsEnded || !IsInited || IsJudged)
+            {
+                return;
+            }
+            if (GetTimeSpanToJudgeTiming() > TAP_JUDGE_SEG_3RD_PERFECT_MSEC / 1000)
+            {
+                IsJudged = true;
+                JudgeResult = JudgeGrade.Perfect;
                 End();
             }
         }
@@ -396,55 +446,21 @@ namespace MajdataPlay.Scenes.Game.Notes.Behaviours
         void LoadTapSkin()
         {
             var skin = MajInstances.SkinManager.GetTapSkin();
-            //var _thisRenderer = GetComponent<SpriteRenderer>();
-            //var _exRenderer = transform.GetChild(0).GetComponent<SpriteRenderer>();
-            //var _tapLineRenderer = _tapLineObject.GetComponent<SpriteRenderer>();
 
-            _thisRenderer.sprite = skin.Normal;
-            _thisRenderer.sharedMaterial = DefaultMaterial;
-            _exRenderer.sprite = skin.Ex;
-            _exRenderer.color = skin.ExEffects[0];
-            _tapLineRenderer.sprite = skin.GuideLines[0];
-
-            if (IsEach)
+            if (IsMine)
             {
-                _thisRenderer.sprite = skin.Each;
-                _tapLineRenderer.sprite = skin.GuideLines[1];
-                _exRenderer.color = skin.ExEffects[1];
-            }
-
-            if (IsBreak)
-            {
-                _thisRenderer.sprite = skin.Break;
-                _thisRenderer.sharedMaterial = BreakMaterial;
-                _tapLineRenderer.sprite = skin.GuideLines[2];
-                _exRenderer.color = skin.ExEffects[2];
-            }
-        }
-        void LoadStarSkin()
-        {
-            //var _thisRenderer = GetComponent<SpriteRenderer>();
-            //var _exRenderer = transform.GetChild(0).GetComponent<SpriteRenderer>();
-            //var _tapLineRenderer = _tapLineObject.GetComponent<SpriteRenderer>();
-            var skin = MajInstances.SkinManager.GetStarSkin();
-            _thisRenderer.sharedMaterial = DefaultMaterial;
-            _exRenderer.color = skin.ExEffects[0];
-            _tapLineRenderer.sprite = skin.GuideLines[0];
-
-            if (IsDouble)
-            {
-                _thisRenderer.sprite = skin.Double;
-                _exRenderer.sprite = skin.ExDouble;
-
+                _thisRenderer.sprite = skin.Mine;
+                _thisRenderer.sharedMaterial = DefaultMaterial;
+                _exRenderer.sprite = skin.Ex;
+                _exRenderer.color = skin.ExEffects[0];
+                _tapLineRenderer.sprite = skin.GuideLines[0];
                 if (IsEach)
                 {
-                    _thisRenderer.sprite = skin.EachDouble;
                     _tapLineRenderer.sprite = skin.GuideLines[1];
-                    _exRenderer.color = skin.ExEffects[1];
                 }
                 if (IsBreak)
                 {
-                    _thisRenderer.sprite = skin.BreakDouble;
+                    _thisRenderer.sprite = skin.BreakMine;
                     _thisRenderer.sharedMaterial = BreakMaterial;
                     _tapLineRenderer.sprite = skin.GuideLines[2];
                     _exRenderer.color = skin.ExEffects[2];
@@ -453,8 +469,10 @@ namespace MajdataPlay.Scenes.Game.Notes.Behaviours
             else
             {
                 _thisRenderer.sprite = skin.Normal;
+                _thisRenderer.sharedMaterial = DefaultMaterial;
                 _exRenderer.sprite = skin.Ex;
-
+                _exRenderer.color = skin.ExEffects[0];
+                _tapLineRenderer.sprite = skin.GuideLines[0];
                 if (IsEach)
                 {
                     _thisRenderer.sprite = skin.Each;
@@ -467,6 +485,83 @@ namespace MajdataPlay.Scenes.Game.Notes.Behaviours
                     _thisRenderer.sharedMaterial = BreakMaterial;
                     _tapLineRenderer.sprite = skin.GuideLines[2];
                     _exRenderer.color = skin.ExEffects[2];
+                }
+            }
+        }
+        void LoadStarSkin()
+        {
+            var skin = MajInstances.SkinManager.GetStarSkin();
+            _thisRenderer.sharedMaterial = DefaultMaterial;
+            _exRenderer.color = skin.ExEffects[0];
+            _tapLineRenderer.sprite = skin.GuideLines[0];
+
+            if (IsMine)
+            {
+                if (IsDouble)
+                {
+                    _thisRenderer.sprite = skin.DoubleMine;
+                    _exRenderer.sprite = skin.ExDouble;
+                    if (IsBreak)
+                    {
+                        _thisRenderer.sprite = skin.BreakDoubleMine;
+                        _thisRenderer.sharedMaterial = BreakMaterial;
+                        _tapLineRenderer.sprite = skin.GuideLines[2];
+                        _exRenderer.color = skin.ExEffects[2];
+                    }
+                }
+                else
+                {
+                    _thisRenderer.sprite = skin.Mine;
+                    _exRenderer.sprite = skin.Ex;
+
+                    if (IsBreak)
+                    {
+                        _thisRenderer.sprite = skin.BreakMine;
+                        _thisRenderer.sharedMaterial = BreakMaterial;
+                        _tapLineRenderer.sprite = skin.GuideLines[2];
+                        _exRenderer.color = skin.ExEffects[2];
+                    }
+                }
+            }
+            else
+            {
+                if (IsDouble)
+                {
+                    _thisRenderer.sprite = skin.Double;
+                    _exRenderer.sprite = skin.ExDouble;
+
+                    if (IsEach)
+                    {
+                        _thisRenderer.sprite = skin.EachDouble;
+                        _tapLineRenderer.sprite = skin.GuideLines[1];
+                        _exRenderer.color = skin.ExEffects[1];
+                    }
+                    if (IsBreak)
+                    {
+                        _thisRenderer.sprite = skin.BreakDouble;
+                        _thisRenderer.sharedMaterial = BreakMaterial;
+                        _tapLineRenderer.sprite = skin.GuideLines[2];
+                        _exRenderer.color = skin.ExEffects[2];
+                    }
+                }
+                else
+                {
+                    _thisRenderer.sprite = skin.Normal;
+                    _exRenderer.sprite = skin.Ex;
+
+                    if (IsEach)
+                    {
+                        _thisRenderer.sprite = skin.Each;
+                        _tapLineRenderer.sprite = skin.GuideLines[1];
+                        _exRenderer.color = skin.ExEffects[1];
+                    }
+                    if (IsBreak)
+                    {
+                        _thisRenderer.sprite = skin.Break;
+                        _thisRenderer.sharedMaterial = BreakMaterial;
+                        _tapLineRenderer.sprite = skin.GuideLines[2];
+                        _exRenderer.color = skin.ExEffects[2];
+                    }
                 }
             }
         }

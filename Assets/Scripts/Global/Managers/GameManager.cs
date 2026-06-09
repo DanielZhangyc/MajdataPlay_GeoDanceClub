@@ -61,7 +61,7 @@ namespace MajdataPlay
 
         public GameSetting Settings
         {
-            get => MajInstances.Settings;
+            get => MajEnv.Settings;
         }
 
         [SerializeField] BuiltInTimeProvider _timer = BuiltInTimeProvider.Winapi;
@@ -138,6 +138,7 @@ namespace MajdataPlay
             }
             MajDebug.LogInfo($"AndroidVerCode: {androidVersionCode}");
 #endif
+            UnityWebRequest.ClearCookieCache();
             MajEnv.Init();
 #if !UNITY_EDITOR
 #if UNITY_ANDROID
@@ -262,8 +263,10 @@ namespace MajdataPlay
                 SetWindowTopmost();
             }
 #endif
-
+            IODetector.Init();
             InputManager.Init(Majdata<DummyTouchPanelRenderer>.Instance!.InstanceID2SensorIndexMappingTable);
+            OutputManager.Init();
+            CabinetLed.Init();
             if (MajEnv.Mode == RunningMode.Test)
             {
                 EnterTestMode();

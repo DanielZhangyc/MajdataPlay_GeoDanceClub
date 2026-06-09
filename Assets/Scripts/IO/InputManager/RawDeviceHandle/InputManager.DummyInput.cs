@@ -16,7 +16,6 @@ using UnityEngine.InputSystem.EnhancedTouch;
 using UnityEngine.InputSystem.Utilities;
 using UnityEngine.Profiling;
 using UnityEngine.UI;
-using static UnityEngine.GraphicsBuffer;
 using Touch = UnityEngine.InputSystem.EnhancedTouch.Touch;
 using TouchPhase = UnityEngine.InputSystem.TouchPhase;
 
@@ -26,7 +25,7 @@ namespace MajdataPlay.IO
     {
         public const int TOUCH_ANGLE_SMAPLE_COUNT = 128;
         public const float FINGER_RADIUS_SEGMENT_LENGTH = 0.5f / 4;
-        
+
         // uint64 TouchPosData
         //
         // Button bit (12bit)
@@ -40,12 +39,13 @@ namespace MajdataPlay.IO
         // Flag bit (2 bit)
         // 0: ButtonRing only
         // 1: Sensor only
-        readonly static ulong* _posData = null;
+
+        static ReadOnlyMemory<Vector4> _unitCircle = ReadOnlyMemory<Vector4>.Empty;
+        static ulong* _posData = null;
         readonly static Dictionary<int, ulong> _touchRecorder = new(32);
-        readonly static ReadOnlyMemory<Vector4> _unitCircle = ReadOnlyMemory<Vector4>.Empty;
 
         static ushort _version = 0;
-        
+
         static int _lastScreenWidth = -1;
         static int _lastScreenHeight = -1;
         static float _lastFingerRadius = 0.5f;
@@ -61,6 +61,7 @@ namespace MajdataPlay.IO
         static float _lastTouchButtonRingEdge = 5.4f;
         //readonly static Dictionary<SensorArea, HashSet<int>> _touchRecords = new(8);
         public static bool UseOuterTouchAsSensor { get; set; }
+        public static bool UseGameplayTouchEnhancementFeatures { get; set; } = false;
         static void UpdateMousePosition()
         {
             Profiler.BeginSample("ButtonRing.OnPreUpdate.UpdateMousePosition");
@@ -100,7 +101,7 @@ namespace MajdataPlay.IO
             {
                 _btnClickedCountInThisFrame[i] += buttonClickedCount[i];
             }
-            for (var i = 0; i < sensorClickedCount.Length; i++) 
+            for (var i = 0; i < sensorClickedCount.Length; i++)
             {
                 var clickedCount = sensorClickedCount[i];
                 if (i == 16)
@@ -134,7 +135,7 @@ namespace MajdataPlay.IO
         static void FromTouchPanel(in ReadOnlyArray<Touch> touches,
                                    Span<int> buttonClickedCount,
                                    Span<int> sensorClickedCount,
-                                   Span<bool> sensorStates, 
+                                   Span<bool> sensorStates,
                                    Span<bool> extraButton, Camera mainCamera)
         {
 #if UNITY_IOS
@@ -155,9 +156,9 @@ namespace MajdataPlay.IO
                 var isSensorOnly = (lastTouchPosData & (1UL << 63)) != 0;
                 PositionToSensorState(sensorStates,
                     extraButton,
-                    mainCamera, 
-                    touch.screenPosition, 
-                    touchRadius / PLATFORM_TOUCH_RADIUS_ADJUST, 
+                    mainCamera,
+                    touch.screenPosition,
+                    touchRadius / PLATFORM_TOUCH_RADIUS_ADJUST,
                     ref touchPosData,
                     ref isSensorOnly);
                 if (touchRadius > _maxTouchRadius)
@@ -192,7 +193,7 @@ namespace MajdataPlay.IO
                     }
                 }
                 else
-                {                    
+                {
                     for (var i = 0; i < 34; i++)
                     {
                         var lastState = (lastTouchPosData & (1UL << (i + 12))) != 0;
@@ -238,8 +239,8 @@ namespace MajdataPlay.IO
         static void FromMouse(Mouse mouse,
             Span<int> buttonClickedCount,
             Span<int> sensorClickedCount,
-            Span<bool> sensorStates, 
-            Span<bool> extraButton, 
+            Span<bool> sensorStates,
+            Span<bool> extraButton,
             Camera mainCamera)
         {
             var leftButton = mouse.leftButton;
@@ -251,11 +252,11 @@ namespace MajdataPlay.IO
             _touchRecorder.TryGetValue(1, out var lastTouchPosData);
             var touchPosData = 0UL;
             var isSensorOnly = (lastTouchPosData & (1UL << 63)) != 0;
-            PositionToSensorState(sensorStates, 
-                extraButton, 
-                mainCamera, 
-                mouse.position.value, 
-                0, 
+            PositionToSensorState(sensorStates,
+                extraButton,
+                mainCamera,
+                mouse.position.value,
+                0,
                 ref touchPosData,
                 ref isSensorOnly);
 #if UNITY_ANDROID || UNITY_IOS
@@ -337,20 +338,27 @@ namespace MajdataPlay.IO
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         static void PositionToSensorState(Span<bool> sensorStates,
             Span<bool> buttonStates,
-            Camera mainCamera, 
-            Vector3 position, 
-            float touchRadius, 
+            Camera mainCamera,
+            Vector3 position,
+            float touchRadius,
             ref ulong rawPositionData,
             ref bool isSensorOnly)
         {
+            const ulong BUTTON_BIT_MASK = 0b0000_0000_0000_0000_0000_0000_0000_0000_0000_0000_0000_0000_0000_1111_1111_1111;
+            const ulong SENSOR_BIT_MASK = 0b0000_0000_0000_0000_0011_1111_1111_1111_1111_1111_1111_1111_1111_0000_0000_0000;
+            const ulong VERSION_BIT_MASK = 0b0011_1111_1111_1111_1100_0000_0000_0000_0000_0000_0000_0000_0000_0000_0000_0000;
+            const ulong FLAG_BIT_MASK = 0b1100_0000_0000_0000_0000_0000_0000_0000_0000_0000_0000_0000_0000_0000_0000_0000;
+
             var x = (int)position.x;
             var y = (int)position.y;
             if(x < 0 || y < 0)
             {
                 return;
             }
+            var useGameplayTouchEnhancementFeatures = UseGameplayTouchEnhancementFeatures;
             var cubeRay = mainCamera.ScreenToWorldPoint(position);
-            var newP = ((ulong)_version) << (12 + 34);
+            var versionBit = ((ulong)_version) << (12 + 34);
+            var newP = 0UL;
             var rayToCenter = cubeRay - new Vector3(0, 0, -10);
             var radToCenter = rayToCenter.magnitude;
             var subScreenEdge = SubScreenEdge;
@@ -358,7 +366,7 @@ namespace MajdataPlay.IO
             var extraButtonStates = (stackalloc bool[12]);
             var extraSensorStates = (stackalloc bool[34]);
             var isAnyExtraButtonTriggered = false;
-            var isAnyExtraSensorTriggered = false;
+            var isAnySensorTriggered = false;
             var isInSubScreenRect = (cubeRay.x > subScreenEdge.x && cubeRay.x < subScreenEdge.z) &&
                                     (cubeRay.y > subScreenEdge.w && cubeRay.y < subScreenEdge.y);
             if (isInSubScreenRect)
@@ -372,7 +380,7 @@ namespace MajdataPlay.IO
             {
                 const float SENSOR_GROUP_A_DEG = 14.5f;
                 const float SENSOR_GROUP_D_DEG = 8f;
-                
+
                 // out of the screen area to the button area
                 var degree = (-Mathf.Atan2(rayToCenter.y, rayToCenter.x) * Mathf.Rad2Deg) + 180;
                 var pos = (int)(degree / 22.5f);
@@ -400,7 +408,6 @@ namespace MajdataPlay.IO
                 if (isSensor)
                 {
                     extraSensorStates[(int)SensorArea.D1 + index] = true;
-                    isAnyExtraSensorTriggered = true;
                 }
                 else
                 {
@@ -431,19 +438,19 @@ namespace MajdataPlay.IO
                     circleSamplesPtr,
                     ref newP);
             }
-            for (var i = 0; i < 34; i++)
+            isAnySensorTriggered |= (newP & SENSOR_BIT_MASK) > (1 << 11);
+            // if there is any sensor bit triggered,
+            // we consider it as sensor only.
+            if (useGameplayTouchEnhancementFeatures)
             {
-                var result = (newP & (1UL << (i + 12))) != 0;
-                sensorStates[i] |= result;
-                isSensorOnly |= result;
+                isSensorOnly |= isAnySensorTriggered;
             }
-            if(isSensorOnly)
-            {
-                newP |= (1UL << 63);
-            }
+
 
             if (UseOuterTouchAsSensor || isSensorOnly)
             {
+                newP |= (1UL << 63);
+                newP |= versionBit;
                 for (var i = 0; i < 8; i++)
                 {
                     var state = extraButtonStates[i];
@@ -471,12 +478,17 @@ namespace MajdataPlay.IO
                         newP |= 1UL << (i + 1 + 12);
                     }
                 }
+                for (var i = 0; i < 34; i++)
+                {
+                    var result = (newP & (1UL << (i + 12))) != 0;
+                    sensorStates[i] |= result;
+                }
             }
-            // is using outer touch as buttons or not in game
-            if ((!UseOuterTouchAsSensor || _lastTouchButtonRingEdge != 5.4f) && isAnyExtraButtonTriggered )
+            else // is using outer touch as buttons or not in game
             {
-                    newP = 0UL;
-                    sensorStates.Clear();
+                if (isAnyExtraButtonTriggered)
+                {
+                    newP = versionBit;
                     for (var i = 0; i < extraButtonStates.Length; i++)
                     {
                         var state = extraButtonStates[i];
@@ -486,10 +498,20 @@ namespace MajdataPlay.IO
                             newP |= 1UL << i;
                         }
                     }
+                }
+                else if(isAnySensorTriggered)
+                {
+                    for (var i = 0; i < 34; i++)
+                    {
+                        var result = (newP & (1UL << (i + 12))) != 0;
+                        sensorStates[i] |= result;
+                    }
+                }
             }
+
             rawPositionData = newP;
         }
-        
+
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         static void RaycastNow(in Vector3 pos, in Span<bool> newStates, ref ulong newP)
         {

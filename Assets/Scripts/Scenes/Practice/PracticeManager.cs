@@ -119,10 +119,10 @@ namespace MajdataPlay.Scenes.Practice
             }
             _audioTrack.Play();
             _audioTrack.CurrentSec = _startTime;
-            _audioTrack.Volume = MajInstances.Settings.Audio.Volume.BGM;
-            LedRing.SetAllLight(Color.white);
-            LedRing.SetButtonLight(Color.green, 3);
-            LedRing.SetButtonLight(Color.red, 4);
+            _audioTrack.Volume = MajEnv.Settings.Audio.Volume.BGM;
+            CabinetLed.SetAllLight(Color.white);
+            CabinetLed.SetButtonLight(Color.green, 3);
+            CabinetLed.SetButtonLight(Color.red, 4);
             MajInstances.SceneSwitcher.FadeOut();
             _isInited = true;
         }

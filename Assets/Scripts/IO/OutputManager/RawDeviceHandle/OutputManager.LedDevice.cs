@@ -1,23 +1,23 @@
-#if UNITY_STANDALONE
-using HidSharp;
-using MajdataPlay.Utils;
-using System;
+﻿using System;
+using System.Collections.Generic;
+using System.Runtime.CompilerServices;
 using System.Diagnostics;
-using System.IO;
 using System.IO.Ports;
 using System.Linq;
-using System.Runtime.CompilerServices;
+using System.IO;
+using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using MajdataPlay.Settings;
-using UnityEngine;
 using MajdataPlay.Numerics;
-#nullable enable
+using UnityEngine;
+#if UNITY_STANDALONE
+using HidSharp;
+
 namespace MajdataPlay.IO
 {
-    internal static unsafe partial class InputManager
+    public static partial class OutputManager
     {
-
         static class LedDevice
         {
             public static bool IsConnected
@@ -27,42 +27,40 @@ namespace MajdataPlay.IO
                 private set;
             }
 
+            static int _isInited = 0;
+            static bool _isEnabled = true;
+            static float _brightness = 1.0f;
+            static bool _isThrottlerEnabled = false;
+
             static Task _ledDeviceUpdateLoop = Task.CompletedTask;
 
-            readonly static bool _isThrottlerEnabled = false;
-            readonly static bool _isEnabled = true;
-
-            static float _brightness = 1.0f;
-            static LedDevice()
-            {
-                _isEnabled = MajInstances.Settings.IO.OutputDevice.Led.Enable;
-
-                _isThrottlerEnabled = MajInstances.Settings.IO.OutputDevice.Led.Throttler;
-
-                if (MajInstances.Settings.IO.OutputDevice.Led.RefreshRateMs <= 16)
-                {
-                    MajInstances.Settings.IO.OutputDevice.Led.RefreshRateMs = 16;
-                }
-            }
             public static void Init()
             {
-                _brightness = MajInstances.Settings.IO.OutputDevice.Led.Brightness.Clamp(0, 1f);
+                if (Interlocked.CompareExchange(ref _isInited, 0, 1) == 1)
+                {
+                    return;
+                }
+                MajDebug.LogInfo("[Led]Start initialization");
+                _isEnabled = MajEnv.Settings.IO.OutputDevice.Led.Enable;
+                _isThrottlerEnabled = MajEnv.Settings.IO.OutputDevice.Led.Throttler;
+                if (MajEnv.Settings.IO.OutputDevice.Led.RefreshRateMs <= 16)
+                {
+                    MajEnv.Settings.IO.OutputDevice.Led.RefreshRateMs = 16;
+                }
+                _brightness = MajEnv.Settings.IO.OutputDevice.Led.Brightness.Clamp(0, 1f);
+                if (!_isEnabled)
+                {
+                    MajDebug.LogInfo("[Led]Disabled");
+                    return;
+                }
+                else if (!_ledDeviceUpdateLoop.IsCompleted)
+                {
+                    return;
+                }
                 try
                 {
-                    if (!_ledDeviceUpdateLoop.IsCompleted || !_isEnabled)
-                    {
-                        return;
-                    }
-                    var manufacturer = _deviceManufacturer;
-                    CabinetLight.SetSupported(manufacturer == DeviceManufacturerOption.Dao, _isEnabled);
-#if !UNITY_STANDALONE_WIN
-                    // On non-Windows standalone, only Dao HID LED is supported.
-                    if (manufacturer != DeviceManufacturerOption.Dao)
-                    {
-                        MajDebug.LogInfo("[Led]Non-Windows standalone only enables Dao HID LED output.");
-                        return;
-                    }
-#endif
+                    var manufacturer = IODetector.DeviceManufacturer;
+
                     switch (manufacturer)
                     {
                         case DeviceManufacturerOption.General:
@@ -83,16 +81,17 @@ namespace MajdataPlay.IO
                     //MajDebug.LogWarning($"Cannot open {comPortStr}, using dummy lights");
                     IsConnected = false;
                 }
+                MajDebug.LogInfo("[Led]Initialization completed");
             }
             static void SerialPortUpdateLoop()
             {
                 var currentThread = Thread.CurrentThread;
-                var serialPortOptions = _ledDeviceSerialConnInfo;
+                var serialPortOptions = IODetector.LedDeviceSerialConnInfo;
                 var token = MajEnv.GlobalCT;
-                var refreshRate = TimeSpan.FromMilliseconds(MajInstances.Settings.IO.OutputDevice.Led.RefreshRateMs);
+                var refreshRate = TimeSpan.FromMilliseconds(MajEnv.Settings.IO.OutputDevice.Led.RefreshRateMs);
                 var stopwatch = new Stopwatch();
                 var t1 = stopwatch.Elapsed;
-                var ledColors = LedRing.LedColors;
+                var ledRingColors = _ledRingColors.AsSpan();
                 var updatePacket = GeneralSerialLedDevice.BuildUpdatePacket();
                 using var serial = new SerialPort(serialPortOptions.PortName, serialPortOptions.BaudRate);
 
@@ -160,10 +159,9 @@ namespace MajdataPlay.IO
                     {
                         var needUpdate = false;
                         EnsureSerialPortIsOpen(serial);
-                        LedRing.LedFuncUpdate();
                         for (var i = 0; i < 8; i++)
                         {
-                            var color = ledColors[i];
+                            var color = ledRingColors[i];
                             ref var latestReport = ref latestReports[i];
                             if (latestReport.Color == color && _isThrottlerEnabled)
                             {
@@ -202,12 +200,12 @@ namespace MajdataPlay.IO
             static void HIDUpdateLoop()
             {
                 var ledOptions = MajEnv.Settings.IO.OutputDevice.Led;
-                var hidOptions = _ledDeviceHidConnInfo;
+                var hidOptions = IODetector.LedDeviceHidConnInfo;
                 var currentThread = Thread.CurrentThread;
                 var token = MajEnv.GlobalCT;
                 var refreshRate = TimeSpan.FromMilliseconds(ledOptions.RefreshRateMs);
                 var stopwatch = new Stopwatch();
-                var ledColors = LedRing.LedColors;
+                var ledRingColors = _ledRingColors;
                 var t1 = stopwatch.Elapsed;
                 var pid = hidOptions.ProductId;
                 var vid = hidOptions.VendorId;
@@ -308,11 +306,9 @@ namespace MajdataPlay.IO
                         try
                         {
                             var needUpdate = false;
-                            LedRing.LedFuncUpdate();
-                            CabinetLight.LedFuncUpdate();
                             for (var i = 0; i < 8; i++)
                             {
-                                var color = ledColors[i];
+                                var color = ledRingColors[i];
                                 ref var latestReport = ref latestReports[i];
                                 if (latestReport.Color == color && _isThrottlerEnabled)
                                 {
@@ -325,7 +321,7 @@ namespace MajdataPlay.IO
                                 };
                                 needUpdate = true;
                             }
-                            var cabinetLightBrightness = CabinetLight.ReportBrightness;
+                            var cabinetLightBrightness = _cabinetLightBrightness;
                             if (latestCabinetLightBrightness != cabinetLightBrightness)
                             {
                                 latestCabinetLightBrightness = cabinetLightBrightness;
@@ -333,7 +329,7 @@ namespace MajdataPlay.IO
                             }
                             if (needUpdate)
                             {
-                                var reportBuffer = DaoHIDLedDevice.BuildUpdatePacket(buffer, ledColors, cabinetLightBrightness);
+                                var reportBuffer = DaoHIDLedDevice.BuildUpdatePacket(buffer, ledRingColors, cabinetLightBrightness);
                                 hidStream.Write(reportBuffer);
                             }
                         }
@@ -438,7 +434,7 @@ namespace MajdataPlay.IO
                 public static ReadOnlySpan<byte> BuildUpdatePacket(Span<byte> rawBuffer, ReadOnlySpan<Color> ledColors, byte cabinetLightBrightness)
                 {
                     var buffer = rawBuffer.Slice(1);
-                    for (int i = 0,li = 0; li < ledColors.Length;)
+                    for (int i = 0, li = 0; li < ledColors.Length;)
                     {
                         var color = ledColors[li++];
                         var r = (byte)(color.r * 255 * _brightness);

@@ -37,6 +37,7 @@ namespace MajdataPlay
     {
         public const int DEFAULT_LAYER = 0;
         public const int HIDDEN_LAYER = 3;
+        public const int UI_LAYER = 5;
         public const int HTTP_BUFFER_SIZE = 8192;
         public const int HTTP_REQUEST_MAX_RETRY = 4;
         public const int HTTP_TIMEOUT_MS = 10000;
@@ -77,7 +78,7 @@ namespace MajdataPlay
 #if UNITY_ANDROID // Android Only (Sdk Version Declare)
         public static int AndroidSdkVersion
         {
-            get; 
+            get;
             private set;
         }
         public static int TargetSdkVersion
@@ -97,6 +98,8 @@ namespace MajdataPlay
         public static string LogsPath { get; private set; } = string.Empty;
         public static string LangPath { get; private set; } = string.Empty;
         public static string ScoreDBPath { get; private set; } = string.Empty;
+        public static string LegacyScoreDBPath { get; private set; } = string.Empty;
+        public static string FavoriteDBPath { get; private set; } = string.Empty;
         public static string LogPath { get; private set; } = string.Empty;
         public static string RecordOutputsPath { get; private set; } = string.Empty;
         [Preserve] public static Sprite EmptySongCover { get; }
@@ -104,6 +107,11 @@ namespace MajdataPlay
         [Preserve] public static Material DefaultMaterial { get; }
         [Preserve] public static Material HoldShineMaterial { get; }
         public static bool IsLowMemoryDevice { get; private set; }
+        public static MachineInfo MachineInfo { get; private set; } = new()
+        {
+            Name = "MajdataPlay Client",
+            Description = "MajdataPlay Client QR Code Authentication",
+        };
         public static Thread MainThread { get; } = Thread.CurrentThread;
         public static Process GameProcess { get; } = Process.GetCurrentProcess();
 
@@ -258,7 +266,7 @@ namespace MajdataPlay
                 RootPath = Application.persistentDataPath;
                 AssetsPath = Path.Combine(Application.persistentDataPath, "ExtStreamingAssets/");
             }
-                
+
             CachePath = Application.temporaryCachePath;
 #elif UNITY_IOS
             RootPath = Application.persistentDataPath;
@@ -273,8 +281,10 @@ namespace MajdataPlay
             SkinPath = Path.Combine(RootPath, "Skins");
             LogsPath = Path.Combine(RootPath, $"Logs");
             LangPath = Path.Combine(AssetsPath, "Langs");
-            ScoreDBPath = Path.Combine(RootPath,
+            LegacyScoreDBPath = Path.Combine(RootPath,
                 "MajDatabase.db.db.db.db.db.db.db.db.db.db.db.db.db.db.db.db.db.db.db.db.db.db.db.db.db.db.db.db");
+            ScoreDBPath = Path.Combine(RootPath, "MajScores.db");
+            FavoriteDBPath = Path.Combine(CachePath, "Runtime", "MajFavorites.db");
             LogPath = Path.Combine(LogsPath, $"MajPlayRuntime.log");
             RecordOutputsPath = Path.Combine(RootPath, "RecordOutputs");
         }
@@ -286,6 +296,7 @@ namespace MajdataPlay
 
             var netCachePath = Path.Combine(CachePath, "Net");
             var runtimeCachePath = Path.Combine(CachePath, "Runtime");
+            var machineDescriptionPath = Path.Combine(RootPath, "machine_description.json");
             TempPath = Path.Combine(CachePath, "Temp");
 
             CreateDirectoryIfNotExists(CachePath);
@@ -438,7 +449,7 @@ namespace MajdataPlay
                                      .Where(x => x is not null)
                                      .ToArray();
             }
-                
+
             if (File.Exists(_runtimeConfigPath))
             {
                 var js = File.ReadAllText(_runtimeConfigPath);
@@ -460,6 +471,26 @@ namespace MajdataPlay
 
                 var json = Serializer.Json.Serialize(RuntimeConfig, UserJsonReaderOption);
                 File.WriteAllText(_runtimeConfigPath, json);
+            }
+
+            if(File.Exists(machineDescriptionPath))
+            {
+                var js = File.ReadAllText(machineDescriptionPath);
+                MachineInfo? machineInfo;
+
+                if (!Serializer.Json.TryDeserialize(js, out machineInfo, out var e, UserJsonReaderOption) || machineInfo is null)
+                {
+                    MajDebug.LogError($"Failed to read machine description from file\nException: {e}");
+                }
+                else
+                {
+                    MachineInfo = machineInfo;
+                }
+            }
+            else
+            {
+                var json = Serializer.Json.Serialize(MachineInfo, UserJsonReaderOption);
+                File.WriteAllText(machineDescriptionPath, json);
             }
 
 #if UNITY_STANDALONE

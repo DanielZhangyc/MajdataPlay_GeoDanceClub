@@ -571,9 +571,15 @@ namespace MajdataPlay.Scenes.Login
             target.BackgroundDim = source.BackgroundDim;
             target.StarRotation = source.StarRotation;
             target.BGInfo = source.BGInfo;
+            target.SecondaryBGInfo = source.SecondaryBGInfo;
+            target.SubScreenBGInfo = source.SubScreenBGInfo;
             target.TopInfo = source.TopInfo;
+            target.EnableJudgeTimingGauge = source.EnableJudgeTimingGauge;
             target.TrackSkip = source.TrackSkip;
+            target.EnforceGameFailure = source.EnforceGameFailure;
             target.FastRetry = source.FastRetry;
+            target.FastPractice = source.FastPractice;
+            target.GameplaySubScreenClickBehavior = source.GameplaySubScreenClickBehavior;
             target.Mirror = source.Mirror;
             target.Rotation = source.Rotation;
             target.SlideSkipping = source.SlideSkipping;
@@ -584,6 +590,7 @@ namespace MajdataPlay.Scenes.Login
 #if UNITY_STANDALONE
             target.RecordMode = source.RecordMode;
 #endif
+            target.ManualStartGame = source.ManualStartGame;
         }
         static void ApplyJudgeOptions(JudgeOptions target, JudgeOptions source)
         {
@@ -620,6 +627,7 @@ namespace MajdataPlay.Scenes.Login
             target.MainScreenCachedScreenCenterY = source.MainScreenCachedScreenCenterY;
             target.SubDisplayOffset = source.SubDisplayOffset;
             target.SubDisplayScale = source.SubDisplayScale;
+            target.GameplayScreenRotationAngle = source.GameplayScreenRotationAngle;
             target.RenderQuality = source.RenderQuality;
             target.FPSLimit = source.FPSLimit;
             target.SkipVideoDownload = source.SkipVideoDownload;
@@ -763,24 +771,27 @@ namespace MajdataPlay.Scenes.Login
         {
             await UniTask.SwitchToThreadPool();
             var rsp = default(EndpointResponse);
-            try
+            if (!Online.IsMachineRegistered(endpoint))
             {
-                rsp = await Online.RegisterAsync(endpoint, new()
+                try
                 {
-                    Name = "MajdataPlay Client",
-                    Description = "MajdataPlay Client QR Code Authentication",
-                }, token);
-            }
-            catch
-            {
-                MajDebug.LogError("Failed to register QR Code login session");
-                throw;
-            }
-            if(!rsp.IsSuccessfully)
-            {
-                MajDebug.LogError("Failed to register QR Code login session");
-                MajDebug.LogError($"StatusCode:{rsp.StatusCode}\nErrorCode:{rsp.ErrorCode}\nMessage:{rsp.Message}");
-                throw _exception;
+                    rsp = await Online.RegisterAsync(endpoint, new()
+                    {
+                        Name = "MajdataPlay Client",
+                        Description = "MajdataPlay Client QR Code Authentication",
+                    }, token);
+                }
+                catch
+                {
+                    MajDebug.LogError("Failed to register QR Code login session");
+                    throw;
+                }
+                if(!rsp.IsSuccessfully)
+                {
+                    MajDebug.LogError("Failed to register QR Code login session");
+                    MajDebug.LogError(rsp);
+                    throw _exception;
+                }
             }
             try
             {
@@ -794,18 +805,18 @@ namespace MajdataPlay.Scenes.Login
             if (!rsp.IsDeserializable || rsp.StatusCode != HttpStatusCode.Created)
             {
                 MajDebug.LogError("Attempt to request authorization session failed");
-                MajDebug.LogError($"StatusCode:{rsp.StatusCode}\nErrorCode:{rsp.ErrorCode}\nMessage:{rsp.Message}");
+                MajDebug.LogError(rsp);
                 throw _exception;
             }
             var location = string.Empty;
-            if (rsp.Headers.TryGetValue("Location", out var headers))
+            if (rsp.Headers.TryGetValue("location", out var headers))
             {
                 location = headers.FirstOrDefault() ?? string.Empty;
             }
             var e = default(Exception?);
             if (string.IsNullOrEmpty(location) || !rsp.TryDeserialize<AuthRequestResponse?>(out var authRsp, out e) || authRsp is null)
             {
-                MajDebug.LogError($"The server returned an invalid response\nEndpoint: {endpoint.Url}\nStatusCode: {rsp.StatusCode}\nErrorCode: {rsp.ErrorCode}\nIsDeserializable: {rsp.IsDeserializable}\nHeaders:\n" + string.Join('\n', rsp.Headers.Select(x => $"{x.Key}: {string.Join(';', x.Value)}")+ $"\nException: {e}"));
+                MajDebug.LogError($"The server returned an invalid response\n{rsp}\nException: {e}");
                 throw _exception;
             }
             return (location, (AuthRequestResponse)authRsp);

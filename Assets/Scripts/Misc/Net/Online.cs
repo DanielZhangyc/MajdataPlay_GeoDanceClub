@@ -23,6 +23,7 @@ using MajdataPlay.Utils;
 using UnityEngine;
 using UnityEngine.Networking;
 using Nito.AsyncEx;
+using MajdataPlay.Numerics;
 #nullable enable
 namespace MajdataPlay.Net
 {
@@ -184,6 +185,7 @@ namespace MajdataPlay.Net
             {
                 return new()
                 {
+                    Endpoint = apiEndpoint.Url,
                     IsSuccessfully = false,
                     IsDeserializable = false,
                     StatusCode = HttpStatusCode.NotFound,
@@ -208,6 +210,7 @@ namespace MajdataPlay.Net
                     statistics.IsMachineRegistered = false;
                     return new()
                     {
+                        Endpoint = apiEndpoint.Url,
                         IsSuccessfully = false,
                         IsDeserializable = false,
                         StatusCode = HttpStatusCode.NotFound,
@@ -226,6 +229,7 @@ namespace MajdataPlay.Net
                     statistics.IsMachineRegistered = false;
                     return new()
                     {
+                        Endpoint = apiEndpoint.Url,
                         IsSuccessfully = false,
                         IsDeserializable = false,
                         StatusCode = HttpStatusCode.NotFound,
@@ -242,10 +246,12 @@ namespace MajdataPlay.Net
         public static async ValueTask<EndpointResponse> AuthRequestAsync(ApiEndpoint apiEndpoint, CancellationToken token = default)
         {
             var statistics = GetApiEndpointStatistic(apiEndpoint);
+
             if (statistics.IsMachineRegistrationSupported is false)
             {
                 return new()
                 {
+                    Endpoint = apiEndpoint.Url,
                     IsSuccessfully = false,
                     IsDeserializable = false,
                     StatusCode = HttpStatusCode.NotFound,
@@ -268,6 +274,7 @@ namespace MajdataPlay.Net
             {
                 return new(rsp.AsMemory(), _defaultJsonSerializer, _defaultJsonSerializerSettings)
                 {
+                    Endpoint = rsp.Endpoint,
                     IsSuccessfully = true,
                     IsDeserializable = true,
                     StatusCode = rsp.StatusCode,
@@ -280,6 +287,7 @@ namespace MajdataPlay.Net
             {
                 return new()
                 {
+                    Endpoint = rsp.Endpoint,
                     IsSuccessfully = false,
                     IsDeserializable = false,
                     StatusCode = rsp.StatusCode,
@@ -296,6 +304,7 @@ namespace MajdataPlay.Net
             {
                 return new()
                 {
+                    Endpoint = apiEndpoint.Url,
                     IsSuccessfully = false,
                     IsDeserializable = false,
                     StatusCode = HttpStatusCode.NotFound,
@@ -320,6 +329,7 @@ namespace MajdataPlay.Net
             {
                 return new()
                 {
+                    Endpoint = apiEndpoint.Url,
                     IsSuccessfully = false,
                     IsDeserializable = false,
                     StatusCode = HttpStatusCode.NotFound,
@@ -349,11 +359,13 @@ namespace MajdataPlay.Net
             {
                 throw new ArgumentNullException(nameof(apiEndpoint));
             }
+            var uri = apiEndpoint.Url.Combine(API_POST_USER_LOGIN);
             var statistic = GetApiEndpointStatistic(apiEndpoint);
             if (statistic.IsUserLoggedIn is true)
             {
                 return new()
                 {
+                    Endpoint = uri,
                     IsSuccessfully = true,
                     IsDeserializable = false,
                     StatusCode = HttpStatusCode.OK,
@@ -366,6 +378,7 @@ namespace MajdataPlay.Net
             {
                 return new EndpointResponse()
                 {
+                    Endpoint = uri,
                     ErrorCode = HttpErrorCode.InvalidRequest,
                     IsSuccessfully = false,
                     IsDeserializable = false,
@@ -374,7 +387,7 @@ namespace MajdataPlay.Net
             }
 
             var pwdHashStr = HashHelper.ToHexString(await HashHelper.ComputeHashAsync(Encoding.UTF8.GetBytes(password)));
-            var uri = apiEndpoint.Url.Combine(API_POST_USER_LOGIN);
+
 #if ENABLE_IL2CPP || MAJDATA_IL2CPP_DEBUG
             await UniTask.SwitchToMainThread();
             var form = new WWWForm();
@@ -383,10 +396,10 @@ namespace MajdataPlay.Net
             var rsp = await PostAsync(uri, form, token);
 #else
             var formData = new MultipartFormDataContent
-                {
-                    { new StringContent(username), "username" },
-                    { new StringContent(pwdHashStr.Replace("-", "").ToLower()), "password" }
-                };
+            {
+                { new StringContent(username), "username" },
+                { new StringContent(pwdHashStr.Replace("-", "").ToLower()), "password" }
+            };
 
             var rsp = await PostAsync(uri, formData, token);
 #endif
@@ -394,6 +407,7 @@ namespace MajdataPlay.Net
             {
                 rsp = new(rsp.AsMemory(), _defaultJsonSerializer, _defaultJsonSerializerSettings)
                 {
+                    Endpoint = rsp.Endpoint,
                     StatusCode = rsp.StatusCode,
                     ErrorCode = rsp.ErrorCode,
                     IsSuccessfully = rsp.IsSuccessfully,
@@ -485,7 +499,6 @@ namespace MajdataPlay.Net
 #else
                         rsp = await PostAsync(uri, token);
 #endif
-                        MajDebug.LogInfo(rsp.Message + rsp.ErrorCode + rsp.StatusCode);
                     }
                     catch (Exception e)
                     {
@@ -639,12 +652,10 @@ namespace MajdataPlay.Net
                             cachedScoreInfo.Response = scoreInfoRsp;
                             cachedScoreInfo.LastActive = DateTime.Now;
                         }
-                        MajDebug.LogDebug(rsp);
                         return scoreInfo;
                     }
                     else
                     {
-                        MajDebug.LogError(rsp);
                         MajDebug.LogError($"Failed to get chart interact: {e?.Message ?? "Unknown error"}");
                     }
                     if (rsp.ErrorCode == HttpErrorCode.Canceled)
@@ -702,8 +713,9 @@ namespace MajdataPlay.Net
                 }
                 else
                 {
-                    MajDebug.LogError(rsp);
+                    MajDebug.LogError("Failed to post like interact");
                 }
+
                 if (rsp.ErrorCode == HttpErrorCode.Canceled)
                 {
                     break;
@@ -750,7 +762,7 @@ namespace MajdataPlay.Net
                 }
                 else
                 {
-                    MajDebug.LogError(rsp);
+                    MajDebug.LogError("Failed to post score");
                 }
                 if (rsp.ErrorCode == HttpErrorCode.Canceled)
                 {
@@ -828,12 +840,10 @@ namespace MajdataPlay.Net
                 var e = default(Exception?);
                 if (rsp.IsSuccessfully && rsp.TryDeserialize<MajnetSongDetail[]>(out var chartList, out e) && chartList is not null)
                 {
-                    MajDebug.LogDebug(rsp);
                     return chartList;
                 }
                 else
                 {
-                    MajDebug.LogError(rsp);
                     MajDebug.LogError($"Failed to get chart list: {e?.Message ?? "Unknown error"}");
                 }
                 if (rsp.ErrorCode == HttpErrorCode.Canceled)
@@ -871,7 +881,6 @@ namespace MajdataPlay.Net
                 }
                 else
                 {
-                    MajDebug.LogError(rsp);
                     MajDebug.LogError($"Failed to get dan list: {e?.Message ?? "Unknown error"}");
                 }
                 if (rsp.ErrorCode == HttpErrorCode.Canceled)
@@ -913,7 +922,6 @@ namespace MajdataPlay.Net
                     if (!rsp.IsSuccessfully)
                     {
                         MajDebug.LogError("Failed to download user icon");
-                        MajDebug.LogError($"Url:{url}\nStatusCode:{rsp.StatusCode}\nErrorCode:{rsp.ErrorCode}\nMessage:{rsp.Message}");
                         if (rsp.StatusCode is HttpStatusCode.Unauthorized)
                         {
                             using (await statistic.LockAsync(token))
@@ -1025,6 +1033,12 @@ namespace MajdataPlay.Net
                 }
             }
         }
+        public static bool IsMachineRegistered(ApiEndpoint apiEndpoint, CancellationToken token = default)
+        {
+            var stats = _endpointStatistics.TryGetValue(apiEndpoint, out var s) ? s : null;
+
+            return stats?.IsMachineRegistered ?? false;
+        }
         public static void ClearResponseCache()
         {
             ref var @lock = ref _cachedResponseLock;
@@ -1057,7 +1071,6 @@ namespace MajdataPlay.Net
                 else if (!rsp.IsSuccessfully || !rsp.IsDeserializable)
                 {
                     MajDebug.LogError("Failed to get user info");
-                    MajDebug.LogError($"Url:{uri}\nStatusCode:{rsp.StatusCode}\nErrorCode:{rsp.ErrorCode}\nMessage:{rsp.Message}");
                     continue;
                 }
                 return new EndpointResponse<UserSummary>(rsp);
@@ -1083,7 +1096,7 @@ namespace MajdataPlay.Net
                     await UniTask.Yield();
                 }
                 headers = getReq.GetResponseHeaders()?.GroupBy(x => x.Key)
-                                                      .ToDictionary(x => x.Key, x => x.Select(x => x.Value).AsEnumerable());
+                                                      .ToDictionary(x => x.Key.ToLower(), x => x.Select(x => x.Value).AsEnumerable());
                 getReq.EnsureSuccessStatusCode();
                 var nativeBuffer = getReq.downloadHandler.nativeData;
                 var buffer = Array.Empty<byte>();
@@ -1093,8 +1106,9 @@ namespace MajdataPlay.Net
                     nativeBuffer.CopyTo(buffer);
                 }
 
-                return new EndpointResponse(buffer, _defaultJsonSerializer, _defaultJsonSerializerSettings)
+                var epRsp = new EndpointResponse(buffer, _defaultJsonSerializer, _defaultJsonSerializerSettings)
                 {
+                    Endpoint = uri,
                     IsSuccessfully = true,
                     IsDeserializable = true && buffer.Length != 0,
                     ErrorCode = default,
@@ -1102,12 +1116,14 @@ namespace MajdataPlay.Net
                     Message = "",
                     Headers = headers ?? EndpointResponse.EMPTY_HEADERS,
                 };
+                MajDebug.LogDebug($"[Online][GET] {uri}\n{epRsp}");
+                return epRsp;
             }
             catch (HttpException httpE)
             {
-                MajDebug.LogException(httpE);
-                return new EndpointResponse(Array.Empty<byte>(), _defaultJsonSerializer, _defaultJsonSerializerSettings)
+                var epRsp = new EndpointResponse(Array.Empty<byte>(), _defaultJsonSerializer, _defaultJsonSerializerSettings)
                 {
+                    Endpoint = uri,
                     IsSuccessfully = false,
                     IsDeserializable = false,
                     ErrorCode = httpE.ErrorCode,
@@ -1115,12 +1131,26 @@ namespace MajdataPlay.Net
                     Message = httpE.Message,
                     Headers = headers ?? EndpointResponse.EMPTY_HEADERS,
                 };
+                if(httpE.ErrorCode is HttpErrorCode.Timeout)
+                {
+                    MajDebug.LogError($"[Online][GET] {uri} - Timeout");
+                }
+                else if(httpE.ErrorCode is HttpErrorCode.Canceled)
+                {
+                    MajDebug.LogError($"[Online][GET] {uri} - Canceled");
+                }
+                else
+                {
+                    MajDebug.LogError($"[Online][GET] {uri} - Unsuccessful\n{epRsp}");
+                }
+                return epRsp;
             }
             catch(Exception e)
             {
-                MajDebug.LogException(e);
+                MajDebug.LogError($"[Online][GET] {uri} - Unknown Error\n{e}");
                 return new EndpointResponse(Array.Empty<byte>(), _defaultJsonSerializer, _defaultJsonSerializerSettings)
                 {
+                    Endpoint = uri,
                     IsSuccessfully = false,
                     IsDeserializable = false,
                     ErrorCode = HttpErrorCode.Unreachable,
@@ -1134,10 +1164,13 @@ namespace MajdataPlay.Net
             {
                 var client = MajEnv.SharedHttpClient;
                 var rsp = await client.GetAsync(uri, token);
-                if (rsp.StatusCode != HttpStatusCode.OK)
+                var epRsp = default(EndpointResponse);
+                var buffer = await rsp.Content.ReadAsByteArrayAsync();
+                if (!((int)rsp.StatusCode).InRange(200, 299))
                 {
-                    return new EndpointResponse(Array.Empty<byte>(), _defaultJsonSerializer, _defaultJsonSerializerSettings)
+                    epRsp = new EndpointResponse(buffer, _defaultJsonSerializer, _defaultJsonSerializerSettings)
                     {
+                        Endpoint = uri,
                         IsSuccessfully = false,
                         IsDeserializable = false,
                         ErrorCode = HttpErrorCode.Unsuccessful,
@@ -1145,10 +1178,12 @@ namespace MajdataPlay.Net
                         Headers = rsp.Headers.ToDictionary(kv => kv.Key, kv => kv.Value, StringComparer.OrdinalIgnoreCase),
                         Message = ""
                     };
+                    MajDebug.LogError($"[Online][GET] {uri} - Unsuccessful\n{epRsp}");
+                    return epRsp;
                 }
-                var buffer = await rsp.Content.ReadAsByteArrayAsync();
-                return new EndpointResponse(buffer, _defaultJsonSerializer, _defaultJsonSerializerSettings)
+                epRsp = new EndpointResponse(buffer, _defaultJsonSerializer, _defaultJsonSerializerSettings)
                 {
+                    Endpoint = uri,
                     IsSuccessfully = true,
                     IsDeserializable = true,
                     ErrorCode = HttpErrorCode.NoError,
@@ -1156,6 +1191,8 @@ namespace MajdataPlay.Net
                     Headers = rsp.Headers.ToDictionary(kv => kv.Key, kv => kv.Value, StringComparer.OrdinalIgnoreCase),
                     Message = "Ok"
                 };
+                MajDebug.LogDebug($"[Online][GET] {uri}\n{epRsp}");
+                return epRsp;
             }
             catch (OperationCanceledException)
             {
@@ -1163,9 +1200,15 @@ namespace MajdataPlay.Net
                 if (token.IsCancellationRequested)
                 {
                     errorCode = HttpErrorCode.Canceled;
+                    MajDebug.LogError($"[Online][GET] {uri} - Canceled");
+                }
+                else
+                {
+                    MajDebug.LogError($"[Online][GET] {uri} - Timeout");
                 }
                 return new EndpointResponse(Array.Empty<byte>(), _defaultJsonSerializer, _defaultJsonSerializerSettings)
                 {
+                    Endpoint = uri,
                     IsSuccessfully = false,
                     IsDeserializable = false,
                     ErrorCode = errorCode,
@@ -1175,9 +1218,10 @@ namespace MajdataPlay.Net
             }
             catch (Exception e)
             {
-                MajDebug.LogException(e);
+                MajDebug.LogError($"[Online][GET] {uri} - Unknown Error\n{e}");
                 return new EndpointResponse(Array.Empty<byte>(), _defaultJsonSerializer, _defaultJsonSerializerSettings)
                 {
+                    Endpoint = uri,
                     IsSuccessfully = false,
                     IsDeserializable = false,
                     ErrorCode = HttpErrorCode.Unreachable,
@@ -1210,7 +1254,7 @@ namespace MajdataPlay.Net
                         await UniTask.Yield();
                     }
                     headers = getReq.GetResponseHeaders()?.GroupBy(x => x.Key)
-                                                          .ToDictionary(x => x.Key, x => x.Select(x => x.Value).AsEnumerable());
+                                                          .ToDictionary(x => x.Key.ToLower(), x => x.Select(x => x.Value).AsEnumerable());
                     getReq.EnsureSuccessStatusCode();
                     var nativeBuffer = getReq.downloadHandler.nativeData;
                     var buffer = Array.Empty<byte>();
@@ -1219,8 +1263,9 @@ namespace MajdataPlay.Net
                         buffer = new byte[nativeBuffer.Length];
                         nativeBuffer.CopyTo(buffer);
                     }
-                    return new EndpointResponse(buffer, _defaultJsonSerializer, _defaultJsonSerializerSettings)
+                    var epRsp = new EndpointResponse(buffer, _defaultJsonSerializer, _defaultJsonSerializerSettings)
                     {
+                        Endpoint = uri,
                         IsSuccessfully = true,
                         IsDeserializable = true && buffer.Length != 0,
                         ErrorCode = default,
@@ -1228,12 +1273,14 @@ namespace MajdataPlay.Net
                         Message = "",
                         Headers = headers ?? EndpointResponse.EMPTY_HEADERS
                     };
+                    MajDebug.LogDebug($"[Online][POST] {uri}\n{epRsp}");
+                    return epRsp;
                 }
                 catch (HttpException httpE)
                 {
-                    MajDebug.LogException(httpE);
-                    return new EndpointResponse(Array.Empty<byte>(), _defaultJsonSerializer, _defaultJsonSerializerSettings)
+                    var rsp = new EndpointResponse(Array.Empty<byte>(), _defaultJsonSerializer, _defaultJsonSerializerSettings)
                     {
+                        Endpoint = uri,
                         IsSuccessfully = false,
                         IsDeserializable = false,
                         ErrorCode = httpE.ErrorCode,
@@ -1241,12 +1288,26 @@ namespace MajdataPlay.Net
                         Message = httpE.Message,
                         Headers = headers ?? EndpointResponse.EMPTY_HEADERS
                     };
+                    if (httpE.ErrorCode is HttpErrorCode.Timeout)
+                    {
+                        MajDebug.LogError($"[Online][POST] {uri} - Timeout");
+                    }
+                    else if (httpE.ErrorCode is HttpErrorCode.Canceled)
+                    {
+                        MajDebug.LogError($"[Online][POST] {uri} - Canceled");
+                    }
+                    else
+                    {
+                        MajDebug.LogError($"[Online][POST] {uri} - Unsuccessful\n{rsp}");
+                    }
+                    return rsp;
                 }
                 catch (Exception e)
                 {
-                    MajDebug.LogException(e);
+                    MajDebug.LogError($"[Online][POST] {uri} - Unknown Error\n{e}");
                     return new EndpointResponse(Array.Empty<byte>(), _defaultJsonSerializer, _defaultJsonSerializerSettings)
                     {
+                        Endpoint = uri,
                         IsSuccessfully = false,
                         IsDeserializable = false,
                         ErrorCode = HttpErrorCode.Unreachable,
@@ -1277,7 +1338,7 @@ namespace MajdataPlay.Net
                         await UniTask.Yield();
                     }
                     headers = getReq.GetResponseHeaders()?.GroupBy(x => x.Key)
-                                                          .ToDictionary(x => x.Key, x => x.Select(x => x.Value).AsEnumerable());
+                                                          .ToDictionary(x => x.Key.ToLower(), x => x.Select(x => x.Value).AsEnumerable());
                     getReq.EnsureSuccessStatusCode();
                     var nativeBuffer = getReq.downloadHandler.nativeData;
                     var buffer = Array.Empty<byte>();
@@ -1287,8 +1348,9 @@ namespace MajdataPlay.Net
                         nativeBuffer.CopyTo(buffer);
                     }
 
-                    return new EndpointResponse(buffer, _defaultJsonSerializer, _defaultJsonSerializerSettings)
+                    var epRsp = new EndpointResponse(buffer, _defaultJsonSerializer, _defaultJsonSerializerSettings)
                     {
+                        Endpoint = uri,
                         IsSuccessfully = true,
                         IsDeserializable = true && buffer.Length != 0,
                         ErrorCode = default,
@@ -1296,12 +1358,14 @@ namespace MajdataPlay.Net
                         Message = "",
                         Headers = headers ?? EndpointResponse.EMPTY_HEADERS
                     };
+                    MajDebug.LogDebug($"[Online][POST] {uri}\n{epRsp}");
+                    return epRsp;
                 }
                 catch (HttpException httpE)
                 {
-                    MajDebug.LogException(httpE);
-                    return new EndpointResponse(Array.Empty<byte>(), _defaultJsonSerializer, _defaultJsonSerializerSettings)
+                    var rsp = new EndpointResponse(Array.Empty<byte>(), _defaultJsonSerializer, _defaultJsonSerializerSettings)
                     {
+                        Endpoint = uri,
                         IsSuccessfully = false,
                         IsDeserializable = false,
                         ErrorCode = httpE.ErrorCode,
@@ -1309,12 +1373,26 @@ namespace MajdataPlay.Net
                         Message = httpE.Message,
                         Headers = headers ?? EndpointResponse.EMPTY_HEADERS
                     };
+                    if (httpE.ErrorCode is HttpErrorCode.Timeout)
+                    {
+                        MajDebug.LogError($"[Online][POST] {uri} - Timeout");
+                    }
+                    else if (httpE.ErrorCode is HttpErrorCode.Canceled)
+                    {
+                        MajDebug.LogError($"[Online][POST] {uri} - Canceled");
+                    }
+                    else
+                    {
+                        MajDebug.LogError($"[Online][POST] {uri} - Unsuccessful\n{rsp}");
+                    }
+                    return rsp;
                 }
                 catch (Exception e)
                 {
-                    MajDebug.LogException(e);
+                    MajDebug.LogError($"[Online][POST] {uri} - Unknown Error\n{e}");
                     return new EndpointResponse(Array.Empty<byte>(), _defaultJsonSerializer, _defaultJsonSerializerSettings)
                     {
+                        Endpoint = uri,
                         IsSuccessfully = false,
                         IsDeserializable = false,
                         ErrorCode = HttpErrorCode.Unreachable,
@@ -1419,15 +1497,34 @@ namespace MajdataPlay.Net
                 var client = MajEnv.SharedHttpClient;
                 var rsp = await (content is null ? client.PostAsync(uri, new StringContent(string.Empty, Encoding.UTF8, "application/json"), token) : client.PostAsync(uri, content, token));
                 var buffer = await rsp.Content.ReadAsByteArrayAsync();
-                return new EndpointResponse(buffer, _defaultJsonSerializer, _defaultJsonSerializerSettings) 
-                { 
-                    IsSuccessfully = rsp.StatusCode == HttpStatusCode.OK, 
-                    IsDeserializable = rsp.StatusCode == HttpStatusCode.OK,
-                    ErrorCode = rsp.StatusCode == HttpStatusCode.OK ? HttpErrorCode.NoError : HttpErrorCode.Unsuccessful,
+                var epRsp = default(EndpointResponse);
+                if (!((int)rsp.StatusCode).InRange(200, 299))
+                {
+                    epRsp = new EndpointResponse(buffer, _defaultJsonSerializer, _defaultJsonSerializerSettings)
+                    {
+                        Endpoint = uri,
+                        IsSuccessfully = false,
+                        IsDeserializable = false,
+                        ErrorCode = HttpErrorCode.Unsuccessful,
+                        StatusCode = rsp.StatusCode,
+                        Headers = rsp.Headers.ToDictionary(kv => kv.Key, kv => kv.Value, StringComparer.OrdinalIgnoreCase),
+                        Message = ""
+                    };
+                    MajDebug.LogError($"[Online][POST] {uri} - Unsuccessful\n{epRsp}");
+                    return epRsp;
+                }
+                epRsp = new EndpointResponse(buffer, _defaultJsonSerializer, _defaultJsonSerializerSettings)
+                {
+                    Endpoint = uri,
+                    IsSuccessfully = true,
+                    IsDeserializable = true,
+                    ErrorCode = HttpErrorCode.NoError,
                     StatusCode = rsp.StatusCode,
                     Headers = rsp.Headers.ToDictionary(kv => kv.Key, kv => kv.Value, StringComparer.OrdinalIgnoreCase),
                     Message = rsp.StatusCode == HttpStatusCode.OK ? "Ok" : ""
                 };
+                MajDebug.LogDebug($"[Online][POST] {uri}\n{epRsp}");
+                return epRsp;
             }
             catch (OperationCanceledException)
             {
@@ -1435,9 +1532,15 @@ namespace MajdataPlay.Net
                 if (token.IsCancellationRequested)
                 {
                     errorCode = HttpErrorCode.Canceled;
+                    MajDebug.LogError($"[Online][POST] {uri} - Canceled");
+                }
+                else
+                {
+                    MajDebug.LogError($"[Online][POST] {uri} - Timeout");
                 }
                 return new EndpointResponse(Array.Empty<byte>(), _defaultJsonSerializer, _defaultJsonSerializerSettings)
                 {
+                    Endpoint = uri,
                     IsSuccessfully = false,
                     IsDeserializable = false,
                     ErrorCode = errorCode,
@@ -1447,9 +1550,10 @@ namespace MajdataPlay.Net
             }
             catch (Exception e)
             {
-                MajDebug.LogException(e);
+                MajDebug.LogError($"[Online][POST] {uri} - Unknown Error\n{e}");
                 return new EndpointResponse(Array.Empty<byte>(), _defaultJsonSerializer, _defaultJsonSerializerSettings)
                 {
+                    Endpoint = uri,
                     IsSuccessfully = false,
                     IsDeserializable = false,
                     ErrorCode = HttpErrorCode.Unreachable,
@@ -1465,8 +1569,9 @@ namespace MajdataPlay.Net
                 var client = MajEnv.SharedHttpClient;
                 var rsp = await client.PutAsync(uri, content, token);
                 var buffer = await rsp.Content.ReadAsByteArrayAsync();
-                return new EndpointResponse(buffer, _defaultJsonSerializer, _defaultJsonSerializerSettings)
+                var epRsp = new EndpointResponse(buffer, _defaultJsonSerializer, _defaultJsonSerializerSettings)
                 {
+                    Endpoint = uri,
                     IsSuccessfully = rsp.StatusCode == HttpStatusCode.OK,
                     IsDeserializable = rsp.StatusCode == HttpStatusCode.OK,
                     ErrorCode = rsp.StatusCode == HttpStatusCode.OK ? HttpErrorCode.NoError : HttpErrorCode.Unsuccessful,
@@ -1474,6 +1579,15 @@ namespace MajdataPlay.Net
                     Headers = rsp.Headers.ToDictionary(kv => kv.Key, kv => kv.Value, StringComparer.OrdinalIgnoreCase),
                     Message = rsp.StatusCode == HttpStatusCode.OK ? "Ok" : ""
                 };
+                if (epRsp.IsSuccessfully)
+                {
+                    MajDebug.LogDebug($"[Online][PUT] {uri}\n{epRsp}");
+                }
+                else
+                {
+                    MajDebug.LogError($"[Online][PUT] {uri} - Unsuccessful\n{epRsp}");
+                }
+                return epRsp;
             }
             catch (OperationCanceledException)
             {
@@ -1481,9 +1595,15 @@ namespace MajdataPlay.Net
                 if (token.IsCancellationRequested)
                 {
                     errorCode = HttpErrorCode.Canceled;
+                    MajDebug.LogError($"[Online][PUT] {uri} - Canceled");
+                }
+                else
+                {
+                    MajDebug.LogError($"[Online][PUT] {uri} - Timeout");
                 }
                 return new EndpointResponse(Array.Empty<byte>(), _defaultJsonSerializer, _defaultJsonSerializerSettings)
                 {
+                    Endpoint = uri,
                     IsSuccessfully = false,
                     IsDeserializable = false,
                     ErrorCode = errorCode,
@@ -1493,9 +1613,10 @@ namespace MajdataPlay.Net
             }
             catch (Exception e)
             {
-                MajDebug.LogException(e);
+                MajDebug.LogError($"[Online][PUT] {uri} - Unknown Error\n{e}");
                 return new EndpointResponse(Array.Empty<byte>(), _defaultJsonSerializer, _defaultJsonSerializerSettings)
                 {
+                    Endpoint = uri,
                     IsSuccessfully = false,
                     IsDeserializable = false,
                     ErrorCode = HttpErrorCode.Unreachable,

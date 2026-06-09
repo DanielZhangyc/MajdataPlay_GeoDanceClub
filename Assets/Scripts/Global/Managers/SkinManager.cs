@@ -52,6 +52,17 @@ namespace MajdataPlay
                         _touchHoldBreakFans[1] = value.TouchHold_Break[1];
                         _touchHoldBreakFans[2] = value.TouchHold_Break[2];
                         _touchHoldBreakFans[3] = value.TouchHold_Break[3];
+
+                        _touchHoldMineFans[0] = value.TouchHold_Mine[0];
+                        _touchHoldMineFans[1] = value.TouchHold_Mine[1];
+                        _touchHoldMineFans[2] = value.TouchHold_Mine[2];
+                        _touchHoldMineFans[3] = value.TouchHold_Mine[3];
+
+                        _touchHoldBreakMineFans[0] = value.TouchHold_Break_Mine[0];
+                        _touchHoldBreakMineFans[1] = value.TouchHold_Break_Mine[1];
+                        _touchHoldBreakMineFans[2] = value.TouchHold_Break_Mine[2];
+                        _touchHoldBreakMineFans[3] = value.TouchHold_Break_Mine[3];
+
                         _selectedSkin = value;
                     }).Forget();
             }
@@ -74,6 +85,8 @@ namespace MajdataPlay
         readonly static Sprite[] _holdEnds = new Sprite[3];
         readonly static Sprite[] _touchHoldFans = new Sprite[4];
         readonly static Sprite[] _touchHoldBreakFans = new Sprite[4];
+        readonly static Sprite[] _touchHoldMineFans = new Sprite[4];
+        readonly static Sprite[] _touchHoldBreakMineFans = new Sprite[4];
 
         readonly static ReadOnlyMemory<Color> _tapAndHoldExEffects = new Color[3]
         {
@@ -95,7 +108,7 @@ namespace MajdataPlay
         internal async Task InitAsync()
         {
             var path = MajEnv.SkinPath;
-            var selectedSkinName = MajInstances.Settings.Display.Skin;
+            var selectedSkinName = MajEnv.Settings.Display.Skin;
             var dicts = Directory.GetDirectories(path);
             foreach (var (i, skinPath) in dicts.WithIndex())
             {
@@ -119,7 +132,7 @@ namespace MajdataPlay
                 targetSkin = _loadedSkins[0];
                 if(targetSkin.Name != CustomSkin.Empty.Name)
                 {
-                    MajInstances.Settings.Display.Skin = targetSkin.Name;
+                    MajEnv.Settings.Display.Skin = targetSkin.Name;
                     await targetSkin.LoadAsync();
                 }
             }
@@ -150,6 +163,17 @@ namespace MajdataPlay
             _touchHoldBreakFans[1] = targetSkin.TouchHold_Break[1];
             _touchHoldBreakFans[2] = targetSkin.TouchHold_Break[2];
             _touchHoldBreakFans[3] = targetSkin.TouchHold_Break[3];
+
+            _touchHoldMineFans[0] = targetSkin.TouchHold_Mine[0];
+            _touchHoldMineFans[1] = targetSkin.TouchHold_Mine[1];
+            _touchHoldMineFans[2] = targetSkin.TouchHold_Mine[2];
+            _touchHoldMineFans[3] = targetSkin.TouchHold_Mine[3];
+
+            _touchHoldBreakMineFans[0] = targetSkin.TouchHold_Break_Mine[0];
+            _touchHoldBreakMineFans[1] = targetSkin.TouchHold_Break_Mine[1];
+            _touchHoldBreakMineFans[2] = targetSkin.TouchHold_Break_Mine[2];
+            _touchHoldBreakMineFans[3] = targetSkin.TouchHold_Break_Mine[3];
+
             IsInited = true;
         }
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -243,6 +267,9 @@ namespace MajdataPlay
                 Break = SelectedSkin.Tap_Break,
                 Ex = SelectedSkin.Tap_Ex,
 
+                Mine = SelectedSkin.Tap_Mine,
+                BreakMine = SelectedSkin.Tap_Break_Mine,
+
                 GuideLines = _tapLines,
                 ExEffects = _tapAndHoldExEffects.Span
             };
@@ -260,6 +287,11 @@ namespace MajdataPlay
                 BreakDouble = SelectedSkin.Star_Break_Double,
                 Ex = SelectedSkin.Star_Ex,
                 ExDouble = SelectedSkin.Star_Ex_Double,
+
+                Mine = SelectedSkin.Star_Mine,
+                DoubleMine = SelectedSkin.Star_Double_Mine,
+                BreakMine = SelectedSkin.Star_Break_Mine,
+                BreakDoubleMine = SelectedSkin.Star_Break_Double_Mine,
 
                 GuideLines = _starLines,
                 ExEffects = _starExEffects.Span
@@ -279,6 +311,11 @@ namespace MajdataPlay
                 Break_On = SelectedSkin.Hold_Break_On,
                 Ex = SelectedSkin.Hold_Ex,
 
+                Mine = SelectedSkin.Hold_Mine,
+                Mine_On = SelectedSkin.Hold_Mine_On,
+                BreakMine = SelectedSkin.Hold_Break_Mine,
+                BreakMine_On = SelectedSkin.Hold_Break_Mine_On,
+
                 GuideLines = _tapLines,
                 Ends = _holdEnds,
                 ExEffects = _tapAndHoldExEffects.Span
@@ -293,6 +330,8 @@ namespace MajdataPlay
                 Normal = SelectedSkin.Slide,
                 Each = SelectedSkin.Slide_Each,
                 Break = SelectedSkin.Slide_Break,
+                Mine = SelectedSkin.Slide_Mine,
+                BreakMine = SelectedSkin.Slide_Break_Mine,
             };
         }
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -304,6 +343,8 @@ namespace MajdataPlay
                 Normal = SelectedSkin.Wifi,
                 Each = SelectedSkin.Wifi_Each,
                 Break = SelectedSkin.Wifi_Break,
+                Mine = SelectedSkin.Wifi_Mine,
+                BreakMine = SelectedSkin.Wifi_Break_Mine,
             };
         }
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -313,11 +354,17 @@ namespace MajdataPlay
             {
                 Fans = _touchHoldFans,
                 Fans_Break = _touchHoldBreakFans,
+                Fans_Mine = _touchHoldMineFans,
+                Fans_Break_Mine = _touchHoldBreakMineFans,
                 Boader = SelectedSkin.TouchHold[4],
                 Boader_Break = SelectedSkin.TouchHold_Break[4],
+                Boader_Mine = SelectedSkin.TouchHold_Mine[4],
+                Boader_Break_Mine = SelectedSkin.TouchHold_Break_Mine[4],
                 Point = SelectedSkin.TouchPoint,
                 Point_Each = SelectedSkin.TouchPoint_Each,
                 Point_Break = SelectedSkin.TouchPoint_Break,
+                Point_Mine = SelectedSkin.TouchPoint_Mine,
+                Point_Break_Mine = SelectedSkin.TouchPoint_Break_Mine,
                 Off = SelectedSkin.TouchHold_Off,
             };
         }
@@ -329,12 +376,18 @@ namespace MajdataPlay
                 Normal = SelectedSkin.Touch,
                 Each = SelectedSkin.Touch_Each,
                 Break = SelectedSkin.Touch_Break,
+                Mine = SelectedSkin.Touch_Mine,
+                BreakMine = SelectedSkin.Touch_Break_Mine,
                 Point_Normal = SelectedSkin.TouchPoint,
                 Point_Each = SelectedSkin.TouchPoint_Each,
                 Point_Break = SelectedSkin.TouchPoint_Break,
+                Point_Mine = SelectedSkin.TouchPoint_Mine,
+                Point_Break_Mine = SelectedSkin.TouchPoint_Break_Mine,
                 Border_Each = SelectedSkin.TouchBorder_Each,
                 Border_Normal = SelectedSkin.TouchBorder,
                 Border_Break = SelectedSkin.TouchBorder_Break,
+                Border_Mine = SelectedSkin.TouchBorder_Mine,
+                Border_Break_Mine = SelectedSkin.TouchBorder_Break_Mine,
                 JustBorder = SelectedSkin.TouchJust
             };
         }

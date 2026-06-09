@@ -58,13 +58,16 @@ namespace MajdataPlay.Settings
         public BGInfoOption SubScreenBGInfo { get; set; } = BGInfoOption.Achievement;
         
         public TopInfoDisplayOption TopInfo { get; set; } = TopInfoDisplayOption.None;
-        
+        public bool EnableJudgeTimingGauge { get; set; } = false;
+
         public bool TrackSkip { get; set; } = true;
 
         public EnforceGameFailureCondition EnforceGameFailure { get; set; } = EnforceGameFailureCondition.Disabled;
         
         public bool FastRetry { get; set; } = true;
-        
+
+        public bool FastPractice { get; set; } = false;
+
         public GameplaySubScreenClickBehaviorOption GameplaySubScreenClickBehavior { get; set; } = DEFAULT_GameplaySubScreenClickBehavior;
         
         public MirrorOption Mirror { get; set; } = MirrorOption.Off;
@@ -84,6 +87,7 @@ namespace MajdataPlay.Settings
         
         public RecordModeOption RecordMode { get; set; } = RecordModeOption.Disable;
 #endif
+        public bool ManualStartGame { get; set; } = false;
     }
     
     public class JudgeOptions
@@ -243,57 +247,57 @@ namespace MajdataPlay.Settings
     {
         
         [Step("0.05")]
-        [Range("0", "1", HasMax = true, HasMin = true)]
+        [Range("0", "2", HasMax = true, HasMin = true)]
         [OptionEnumerator(typeof(AudioVolumeEnumerator))]
         public float Global { get; set; } = 0.3f;
         
         [Step("0.05")]
-        [Range("0", "1", HasMax = true, HasMin = true)]
+        [Range("0", "2", HasMax = true, HasMin = true)]
         [OptionEnumerator(typeof(AudioVolumeEnumerator))]
         public float BGM { get; set; } = 1f;
         
         [Step("0.05")]
-        [Range("0", "1", HasMax = true, HasMin = true)]
+        [Range("0", "2", HasMax = true, HasMin = true)]
         [OptionEnumerator(typeof(AudioVolumeEnumerator))]
         public float Track { get; set; } = 1f;
         
         [Step("0.05")]
-        [Range("0", "1", HasMax = true, HasMin = true)]
+        [Range("0", "2", HasMax = true, HasMin = true)]
         [OptionEnumerator(typeof(AudioVolumeEnumerator))]
         public float Answer { get; set; } = 0.8f;
         
         [Step("0.05")]
-        [Range("0", "1", HasMax = true, HasMin = true)]
+        [Range("0", "2", HasMax = true, HasMin = true)]
         [OptionEnumerator(typeof(AudioVolumeEnumerator))]
         public float Tap { get; set; } = 0.3f;
 
         [Step("0.05")]
-        [Range("0", "1", HasMax = true, HasMin = true)]
+        [Range("0", "2", HasMax = true, HasMin = true)]
         [OptionEnumerator(typeof(AudioVolumeEnumerator))]
         public float Ex { get; set; } = 0.3f;
         
         [Step("0.05")]
-        [Range("0", "1", HasMax = true, HasMin = true)]
+        [Range("0", "2", HasMax = true, HasMin = true)]
         [OptionEnumerator(typeof(AudioVolumeEnumerator))]
         public float Break { get; set; } = 0.3f;
         
         [Step("0.05")]
-        [Range("0", "1", HasMax = true, HasMin = true)]
+        [Range("0", "2", HasMax = true, HasMin = true)]
         [OptionEnumerator(typeof(AudioVolumeEnumerator))]
         public float Slide { get; set; } = 0.3f;
         
         [Step("0.05")]
-        [Range("0", "1", HasMax = true, HasMin = true)]
+        [Range("0", "2", HasMax = true, HasMin = true)]
         [OptionEnumerator(typeof(AudioVolumeEnumerator))]
         public float Touch { get; set; } = 0.3f;
 
         [Step("0.05")]
-        [Range("0", "1", HasMax = true, HasMin = true)]
+        [Range("0", "2", HasMax = true, HasMin = true)]
         [OptionEnumerator(typeof(AudioVolumeEnumerator))]
         public float Hanabi { get; set; } = 0.3f;
         
         [Step("0.05")]
-        [Range("0", "1", HasMax = true, HasMin = true)]
+        [Range("0", "2", HasMax = true, HasMin = true)]
         [OptionEnumerator(typeof(AudioVolumeEnumerator))]
         public float Voice { get; set; } = 1f;
     }
@@ -531,7 +535,7 @@ namespace MajdataPlay.Settings
     public class LedOptions
     {
         
-        public bool Enable { get; set; } = true;
+        public bool Enable { get; init; } = true;
         
         public float Brightness { get; set; } = 1.0f;
         
@@ -546,7 +550,8 @@ namespace MajdataPlay.Settings
     
     public class ButtonRingOptions
     {
-        
+        public bool Enable { get; init; } = true;
+
         public ButtonRingDeviceOption? Type { get; set; } = null;
         
         public bool Debounce { get; set; } = false;
@@ -560,7 +565,8 @@ namespace MajdataPlay.Settings
     
     public class TouchPanelOptions
     {
-        
+        public bool Enable { get; init; } = true;
+
         public bool Debounce { get; set; } = false;
         
         public TouchPanelSensitivityConfig Sensitivities { get; set; } = default;
@@ -607,6 +613,14 @@ namespace MajdataPlay.Settings
     {
         
         public int TouchRadius { get; set; } = 30;
+        public CapacitiveTouchPanelRadiusOffsetConfig RadiusOffset { get; set; } = new()
+        {
+            A = 0,
+            B = 20,
+            C = 0,
+            D = 0,
+            E = 25
+        };
     }
     
     public class SerialPortOptions
@@ -634,7 +648,20 @@ namespace MajdataPlay.Settings
         
         public short E { get; set; }
     }
-    
+    public struct CapacitiveTouchPanelRadiusOffsetConfig
+    {
+
+        public int A { get; set; }
+
+        public int B { get; set; }
+
+        public int C { get; set; }
+
+        public int D { get; set; }
+
+        public int E { get; set; }
+    }
+
     public class ChannelOptions
     {
         // Front (LF / RF)

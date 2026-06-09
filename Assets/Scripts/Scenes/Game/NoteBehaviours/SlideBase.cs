@@ -192,7 +192,11 @@ namespace MajdataPlay.Scenes.Game.Notes.Behaviours
         [ReadOnlyField, SerializeField]
         protected float FadeInMaxAlpha = 0.5f; // 淡入时最大不透明度
 
-
+        protected int JudgeQueueLength = 0;
+        protected int AutoplayLastAreaIndex = 0;
+        [ReadOnlyField]
+        [SerializeField]
+        protected float AutoplayProgress = 0f;
         protected float DJAutoplayProgress = 0;
 
         protected int LastHiddenSlideBarIndex = 0;
@@ -219,6 +223,47 @@ namespace MajdataPlay.Scenes.Game.Notes.Behaviours
             Dispose();
         }
         public abstract void Init();
+        protected void MineCheck()
+        {
+            if (!IsMine || IsJudged)
+            {
+                return;
+            }
+            if (ConnectInfo.IsGroupPartEnd || !ConnectInfo.IsConnSlide)
+            {
+                if (GetTimeSpanToJudgeTiming() >= 0)
+                {
+                    JudgeResult = JudgeGrade.Perfect;
+                    IsJudged = true;
+                    HideAllBar();
+                }
+                else
+                {
+                    Autoplay();
+                }
+            }
+            else
+            {
+                if (GetRemainingTimeWithoutOffset() == 0)
+                {
+                    IsJudged = true;
+                    ClearAllJudgeQueue();
+                    HideAllBar();
+                }
+                else
+                {
+                    Autoplay();
+                }
+            }
+        }
+        void ClearAllJudgeQueue()
+        {
+            for (var i = 0; i < JudgeQueues.Length; i++)
+            {
+                ref var queue = ref JudgeQueues[i];
+                queue = Memory<SlideArea>.Empty;
+            }
+        }
         [Il2CppSetOption(Option.NullChecks, false)]
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         protected sealed override void Judge(float currentSec)
@@ -227,17 +272,17 @@ namespace MajdataPlay.Scenes.Game.Notes.Behaviours
             {
                 return;
             }
-            else if (_isJudged)
+            else if (IsJudged)
             {
                 return;
             }
             var stayTimeMSec = LastWaitTimeSec * 1000; // 停留时间
 
             // By Minepig
-            var diffSec = currentSec - JudgeTiming;
+            var diffSec = currentSec - JudgeTimingWithOffset;
             var isFast = diffSec < 0;
             var diffMSec = MathF.Abs(diffSec) * 1000;
-            _judgeDiff = diffSec * 1000;
+            JudgeDiff = diffSec * 1000;
             // input latency simulation
             //var ext = MathF.Max(0.05f, MathF.Min(stayTime / 4, 0.36666667f));
             var ext = MathF.Min(stayTimeMSec / 4, SLIDE_JUDGE_MAXIMUM_ALLOWED_EXT_LENGTH_MSEC);
@@ -258,8 +303,8 @@ namespace MajdataPlay.Scenes.Game.Notes.Behaviours
 
             //MajDebug.Log($"Slide diff : {MathF.Round(diffMSec, 2)} ms");
             ConvertJudgeGrade(ref result);
-            _judgeResult = result;
-            _isJudged = true;
+            JudgeResult = result;
+            IsJudged = true;
 
             var remainingStartTime = ThisFrameSec - ConnectInfo.StartTiming;
             if (remainingStartTime < 0)
@@ -270,6 +315,17 @@ namespace MajdataPlay.Scenes.Game.Notes.Behaviours
             {
                 LastWaitTimeSec = 0.05f;
             }
+            if (IsMine)
+            {
+                if (JudgeResult >= JudgeGrade.Perfect)
+                {
+                    JudgeResult = JudgeGrade.TooFast;
+                }
+                else
+                {
+                    JudgeResult = JudgeGrade.Miss;
+                }
+            }
         }
         [Il2CppSetOption(Option.NullChecks, false)]
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -279,13 +335,13 @@ namespace MajdataPlay.Scenes.Game.Notes.Behaviours
             {
                 return;
             }
-            else if (_isJudged)
+            else if (IsJudged)
             {
                 return;
             }
-            var diffSec = currentSec - JudgeTiming;
+            var diffSec = currentSec - JudgeTimingWithOffset;
             var isFast = diffSec < 0;
-            _judgeDiff = diffSec * 1000;
+            JudgeDiff = diffSec * 1000;
             var diffMSec = MathF.Abs(diffSec) * 1000;
             var judge = JudgeGrade.Miss;
             if (isFast)
@@ -316,13 +372,24 @@ namespace MajdataPlay.Scenes.Game.Notes.Behaviours
             }
 
             //MajDebug.Log($"Slide diff : {MathF.Round(diffMSec, 2)} ms");
-            _judgeResult = judge;
-            _isJudged = true;
+            JudgeResult = judge;
+            IsJudged = true;
 
             var remainingStartTime = ThisFrameSec - ConnectInfo.StartTiming;
             if (remainingStartTime < 0)
             {
                 LastWaitTimeSec = MathF.Abs(remainingStartTime) / 2;
+            }
+            if (IsMine)
+            {
+                if (JudgeResult >= JudgeGrade.Perfect)
+                {
+                    JudgeResult = JudgeGrade.TooFast;
+                }
+                else
+                {
+                    JudgeResult = JudgeGrade.Miss;
+                }
             }
         }
         [Il2CppSetOption(Option.NullChecks, false)]
@@ -330,7 +397,7 @@ namespace MajdataPlay.Scenes.Game.Notes.Behaviours
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         protected void HideBar(int endIndex)
         {
-            endIndex = endIndex - 1;       
+            endIndex = endIndex - 1;
             endIndex = Math.Min(endIndex, SlideBars.Count - 1);
             if (endIndex < LastHiddenSlideBarIndex)
             {
@@ -355,7 +422,7 @@ namespace MajdataPlay.Scenes.Game.Notes.Behaviours
             }
 
             bool canPlay;
-            canPlay = NoteEffectManager.CheckJudgeDisplaySetting(MajInstances.Settings.Display.SlideJudgeType, result);
+            canPlay = NoteEffectManager.CheckJudgeDisplaySetting(MajEnv.Settings.Display.SlideJudgeType, result);
 
             return canPlay;
         }
@@ -484,7 +551,7 @@ namespace MajdataPlay.Scenes.Game.Notes.Behaviours
         {
             if (!IsSoundPlayed)
             {
-                _audioEffMana.PlaySlideSound(IsBreak);
+                AudioEffMana.PlaySlideSound(IsBreak);
                 IsSoundPlayed = true;
             }
         }
@@ -494,21 +561,21 @@ namespace MajdataPlay.Scenes.Game.Notes.Behaviours
         {
             if (judgeResult.IsBreak && judgeResult.Grade == JudgeGrade.Perfect)
             {
-                _audioEffMana.PlayBreakSlideEndSound();
+                AudioEffMana.PlayBreakSlideEndSound();
             }
         }
         protected virtual void TooLateJudge()
         {
             if (QueueRemaining == 1)
             {
-                _judgeResult = JudgeGrade.LateGood;
+                JudgeResult = JudgeGrade.LateGood;
             }
             else
             {
-                _judgeResult = JudgeGrade.Miss;
+                JudgeResult = JudgeGrade.Miss;
             }
-            ConvertJudgeGrade(ref _judgeResult);
-            _isJudged = true;
+            ConvertJudgeGrade(ref JudgeResult);
+            IsJudged = true;
         }
         protected virtual void End()
         {
@@ -529,14 +596,14 @@ namespace MajdataPlay.Scenes.Game.Notes.Behaviours
         public void ForceFinish()
         {
             if (!ConnectInfo.IsConnSlide || ConnectInfo.IsGroupPartEnd)
-            { 
-                return; 
+            {
+                return;
             }
             HideAllBar();
             var emptyQueue = Memory<SlideArea>.Empty;
             for (var i = 0; i < 3; i++)
-            { 
-                JudgeQueues[i] = emptyQueue; 
+            {
+                JudgeQueues[i] = emptyQueue;
             }
         }
         [Il2CppSetOption(Option.NullChecks, false)]
@@ -622,18 +689,18 @@ namespace MajdataPlay.Scenes.Game.Notes.Behaviours
                 {
                     if ((p & (1UL << (i + 12))) != 0)
                     {
-                        _noteManager.SimulateSensorPress((SensorArea)i);
+                        NoteManager.SimulateSensorPress((SensorArea)i);
                     }
                 }
                 if ((p & (0b11 << (16 + 12))) != 0)
                 {
-                    _noteManager.SimulateSensorPress(SensorArea.C);
+                    NoteManager.SimulateSensorPress(SensorArea.C);
                 }
                 for (var i = 18; i < 34; i++)
                 {
                     if ((p & (1UL << (i + 12))) != 0)
                     {
-                        _noteManager.SimulateSensorPress((SensorArea)(i - 1));
+                        NoteManager.SimulateSensorPress((SensorArea)(i - 1));
                     }
                 }
             }
